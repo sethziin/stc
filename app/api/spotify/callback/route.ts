@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getAccessToken } from "../token"; // usa o novo helper
+import { getAccessToken } from "../token";
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
@@ -10,10 +10,7 @@ export async function GET(req: Request) {
   }
 
   try {
-    // tenta obter um novo access token diretamente com o refresh_token do .env
     const token = await getAccessToken();
-
-    // redireciona para /spotify após login bem-sucedido
     const redirectUrl = new URL("/spotify", req.url);
     redirectUrl.searchParams.set("token", token);
 
