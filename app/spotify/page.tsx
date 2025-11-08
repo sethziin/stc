@@ -21,16 +21,14 @@ export default function SpotifyPage() {
   const [loadingLyrics, setLoadingLyrics] = useState<boolean>(false);
   const [lastTrackId, setLastTrackId] = useState<string | null>(null);
   const [transitioning, setTransitioning] = useState<boolean>(false);
-  const [bgGradient, setBgGradient] = useState<string>(
-    "radial-gradient(circle at 20% 20%, #000000, #000000)"
-  );
+  const [bgColors, setBgColors] = useState<[string, string]>(["#000000", "#000000"]);
   const [textColor, setTextColor] = useState<string>("white");
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // 🔹 Extrai cores principais e decide cor de contraste do texto
-  async function extractDominantGradient(
+  // 🔹 Extrai cores e decide contraste
+  async function extractDominantColors(
     url: string
-  ): Promise<{ gradient: string; textColor: string }> {
+  ): Promise<{ colors: [string, string]; textColor: string }> {
     return new Promise((resolve) => {
       const img = document.createElement("img");
       img.crossOrigin = "Anonymous";
@@ -39,34 +37,20 @@ export default function SpotifyPage() {
         const canvas = document.createElement("canvas");
         const ctx = canvas.getContext("2d");
         if (!ctx)
-          return resolve({
-            gradient: "radial-gradient(circle, #000, #000)",
-            textColor: "white",
-          });
+          return resolve({ colors: ["#000", "#000"], textColor: "white" });
 
         canvas.width = img.width;
         canvas.height = img.height;
         ctx.drawImage(img, 0, 0, img.width, img.height);
         const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
 
-        let r = 0,
-          g = 0,
-          b = 0,
-          r2 = 0,
-          g2 = 0,
-          b2 = 0,
-          count = 0;
-
+        let r = 0, g = 0, b = 0, r2 = 0, g2 = 0, b2 = 0, count = 0;
         for (let i = 0; i < data.length; i += 4) {
           const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
           if (avg > 128) {
-            r += data[i];
-            g += data[i + 1];
-            b += data[i + 2];
+            r += data[i]; g += data[i + 1]; b += data[i + 2];
           } else {
-            r2 += data[i];
-            g2 += data[i + 1];
-            b2 += data[i + 2];
+            r2 += data[i]; g2 += data[i + 1]; b2 += data[i + 2];
           }
           count++;
         }
@@ -78,42 +62,35 @@ export default function SpotifyPage() {
         g2 = Math.floor(g2 / count);
         b2 = Math.floor(b2 / count);
 
-        const bright = `rgb(${r},${g},${b})`;
-        const dark = `rgb(${r2},${g2},${b2})`;
+        const c1 = `rgb(${r},${g},${b})`;
+        const c2 = `rgb(${r2},${g2},${b2})`;
 
         const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-        const contrastText = luminance > 0.6 ? "black" : "white";
+        const textColor = luminance > 0.6 ? "black" : "white";
 
-        resolve({
-          gradient: `radial-gradient(circle at 20% 20%, ${bright}, ${dark})`,
-          textColor: contrastText,
-        });
+        resolve({ colors: [c1, c2], textColor });
       };
-      img.onerror = () =>
-        resolve({
-          gradient: "radial-gradient(circle, #000, #000)",
-          textColor: "white",
-        });
+      img.onerror = () => resolve({ colors: ["#000", "#000"], textColor: "white" });
     });
   }
 
-  // 🔹 Atualiza estado da faixa (e calcula gradiente inicial)
+  // 🔹 Atualiza faixa e cores
   useEffect(() => {
     async function fetchNow() {
       try {
         const r = await fetch("/api/spotify/now-playing", { cache: "no-store" });
         const j: NowPlaying = await r.json();
 
-        // 🎵 primeira vez: define gradiente inicial
+        // inicializa cores na primeira vez
         if (!lastTrackId && j.album?.image) {
-          extractDominantGradient(j.album.image).then((res) => {
-            setBgGradient(res.gradient);
+          extractDominantColors(j.album.image).then((res) => {
+            setBgColors(res.colors);
             setTextColor(res.textColor);
           });
         }
 
+        // troca de faixa → recalcula cores
         if (lastTrackId && j.track?.id && j.track.id !== lastTrackId) {
-          // troca de faixa → animação e gradiente novo
           setTransitioning(true);
           setTimeout(() => {
             setLyrics([]);
@@ -125,8 +102,8 @@ export default function SpotifyPage() {
           }, 400);
 
           if (j.album?.image) {
-            extractDominantGradient(j.album.image).then((res) => {
-              setBgGradient(res.gradient);
+            extractDominantColors(j.album.image).then((res) => {
+              setBgColors(res.colors);
               setTextColor(res.textColor);
             });
           }
@@ -144,15 +121,12 @@ export default function SpotifyPage() {
     return () => clearInterval(id);
   }, [lastTrackId]);
 
-  // 🔹 Carrega letra sincronizada
+  // 🔹 Carrega letra
   useEffect(() => {
     async function loadLyrics() {
       if (!now?.isPlaying || !now.track?.name) {
-        setLyrics([]);
-        setActiveIdx(-1);
-        return;
+        setLyrics([]); setActiveIdx(-1); return;
       }
-
       setLoadingLyrics(true);
       if (timerRef.current) clearInterval(timerRef.current);
 
@@ -163,9 +137,7 @@ export default function SpotifyPage() {
       if (now.durationMs) params.set("durationMs", String(now.durationMs));
 
       try {
-        const r = await fetch(`/api/spotify/lyrics?${params.toString()}`, {
-          cache: "no-store",
-        });
+        const r = await fetch(`/api/spotify/lyrics?${params.toString()}`, { cache: "no-store" });
         const j = await r.json();
         setLyrics(j.lyrics || []);
         setActiveIdx(-1);
@@ -180,7 +152,7 @@ export default function SpotifyPage() {
     if (now?.track?.id) loadLyrics();
   }, [now?.track?.id]);
 
-  // 🔹 Sincroniza letra em tempo real
+  // 🔹 Sincroniza letra
   useEffect(() => {
     if (!now?.isPlaying || !lyrics.length) {
       if (timerRef.current) clearInterval(timerRef.current);
@@ -199,9 +171,7 @@ export default function SpotifyPage() {
       setActiveIdx(idx);
     }, 500);
 
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [now?.isPlaying, now?.progressMs, lyrics]);
 
   const isPlaying = now?.isPlaying && now?.track?.name;
@@ -212,7 +182,7 @@ export default function SpotifyPage() {
       className={`flex flex-col items-center justify-center text-center transition-all duration-700 ${
         transitioning ? "opacity-0 translate-y-2" : "opacity-100 translate-y-0"
       }`}
-      style={{ color: textColor, transition: "color 0.8s ease" }}
+      style={{ color: textColor }}
     >
       <div className="flex items-center justify-center gap-4 mb-10">
         {now?.album?.image ? (
@@ -271,38 +241,33 @@ export default function SpotifyPage() {
           animation: fadeInLyric 0.8s ease forwards;
         }
         @keyframes fadeInLyric {
-          0% {
-            opacity: 0;
-            transform: translateY(10px);
-          }
-          100% {
-            opacity: 1;
-            transform: translateY(0);
-          }
+          0% { opacity: 0; transform: translateY(10px); }
+          100% { opacity: 1; transform: translateY(0); }
         }
       `}</style>
     </div>
   );
 
   return (
-    <main
-      className="relative min-h-screen flex flex-col items-center justify-center p-6 select-none transition-all duration-1000"
-      style={{
-        background: bgGradient,
-        color: textColor,
-        transition: "background 1s ease, color 0.8s ease",
-      }}
-    >
+    <main className="relative min-h-screen flex flex-col items-center justify-center p-6 select-none overflow-hidden">
+      {/* 🔥 lava lamp background */}
+      <div
+        className="absolute inset-0 -z-10 animate-lava"
+        style={{
+          background: `radial-gradient(circle at 20% 20%, ${bgColors[0]}, ${bgColors[1]})`,
+          backgroundSize: "200% 200%",
+          filter: "blur(80px) brightness(0.8)",
+          transition: "background 1s ease",
+        }}
+      />
+      
       <div
         className={`w-full max-w-3xl flex flex-col items-center justify-center mb-24 transition-all duration-700 ${
           transitioning ? "opacity-0 translate-y-2" : "opacity-100 translate-y-0"
         }`}
+        style={{ color: textColor }}
       >
-        {isPlaying ? (
-          playing
-        ) : (
-          <h1 className="text-2xl opacity-70 animate-fade-in">cri cri cri</h1>
-        )}
+        {isPlaying ? playing : <h1 className="text-2xl opacity-70 animate-fade-in">cri cri cri</h1>}
       </div>
 
       <div className="absolute bottom-10 flex flex-col items-center transition-all duration-700">
@@ -310,8 +275,16 @@ export default function SpotifyPage() {
       </div>
 
       <style jsx global>{`
+        @keyframes lavaMove {
+          0% { background-position: 0% 50%; }
+          50% { background-position: 100% 50%; }
+          100% { background-position: 0% 50%; }
+        }
+        .animate-lava {
+          animation: lavaMove 15s ease infinite;
+        }
         body {
-          background-color: #000;
+          background: #000;
           font-family: "Josefin Sans", sans-serif;
         }
         .animate-fade-in {
@@ -320,14 +293,8 @@ export default function SpotifyPage() {
           animation: fadeIn 0.8s ease forwards;
         }
         @keyframes fadeIn {
-          0% {
-            opacity: 0;
-            transform: translateY(8px);
-          }
-          100% {
-            opacity: 1;
-            transform: translateY(0);
-          }
+          0% { opacity: 0; transform: translateY(8px); }
+          100% { opacity: 1; transform: translateY(0); }
         }
       `}</style>
     </main>
