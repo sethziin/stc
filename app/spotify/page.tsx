@@ -168,14 +168,6 @@ export default function SpotifyPage() {
       {/* card do discord fixado na parte inferior */}
       <div className="absolute bottom-10 flex flex-col items-center">
         <DiscordCard />
-        <a
-          href="https://discord.com/users/789331231888244736"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="mt-3 px-5 py-2 border border-white/30 rounded-md text-white/80 hover:bg-white/10 transition-all"
-        >
-          Perfil
-        </a>
       </div>
 
       <style jsx global>{`
