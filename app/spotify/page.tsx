@@ -1,5 +1,6 @@
 "use client";
 
+import DiscordCard from "./DiscordCard";
 import { useEffect, useRef, useState } from "react";
 
 type NowPlaying = {
