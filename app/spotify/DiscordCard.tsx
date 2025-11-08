@@ -131,16 +131,14 @@ export default function DiscordCard() {
         </div>
       </div>
 
-      {/* Right Side */}
-      {albumArt ? (
+      {/* Right (mostra somente se estiver ouvindo algo) */}
+      {albumArt && song ? (
         <img
           src={albumArt}
           alt="album"
-          className="w-14 h-14 rounded-xl object-cover shadow-md"
+          className="w-14 h-14 rounded-xl object-cover shadow-md transition-all duration-500"
         />
-      ) : (
-        <div className="w-14 h-14 rounded-xl bg-white/5 border border-white/10" />
-      )}
+      ) : null}
     </a>
   );
 }
