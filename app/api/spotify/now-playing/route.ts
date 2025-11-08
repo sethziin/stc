@@ -1,36 +1,37 @@
 import { NextResponse } from "next/server";
-import { getAccessToken } from "../token";
+import ColorThief from "colorthief";
+import { getNowPlaying } from "../spotify";
 
 export async function GET() {
   try {
-    const token = await getAccessToken();
-    const resp = await fetch("https://api.spotify.com/v1/me/player/currently-playing", {
-      headers: { Authorization: `Bearer ${token}` },
-      cache: "no-store",
-    });
+    const np = await getNowPlaying();
+    if (!np?.isPlaying) return NextResponse.json({ isPlaying: false });
 
-    if (resp.status === 204 || resp.status > 400) {
-      return NextResponse.json({ isPlaying: false });
+    const albumImage = np.album?.image;
+    let colors = ["#000", "#111"];
+    let isDark = true;
+
+    if (albumImage) {
+      try {
+        const imageBuffer = await fetch(albumImage).then((r) => r.arrayBuffer());
+        const dominant = await ColorThief.getPalette(Buffer.from(imageBuffer), 2);
+        colors = dominant.map((c) => `rgb(${c[0]},${c[1]},${c[2]})`);
+        // luminosidade média → define se o fundo é claro ou escuro
+        const avgLuma =
+          (0.299 * dominant[0][0] + 0.587 * dominant[0][1] + 0.114 * dominant[0][2]) / 255;
+        isDark = avgLuma < 0.5;
+      } catch (err) {
+        console.warn("falha ao extrair cores", err);
+      }
     }
 
-    const data = await resp.json();
     return NextResponse.json({
-      isPlaying: data.is_playing,
-      progressMs: data.progress_ms,
-      durationMs: data.item?.duration_ms,
-      track: {
-        id: data.item?.id,
-        name: data.item?.name,
-        uri: data.item?.uri,
-      },
-      artists: data.item?.artists?.map((a: any) => a.name) || [],
-      album: {
-        name: data.item?.album?.name,
-        image: data.item?.album?.images?.[0]?.url || null,
-      },
+      ...np,
+      colors,
+      isDark,
     });
-  } catch (err) {
-    console.error("Now Playing Error:", err);
+  } catch (e) {
+    console.error(e);
     return NextResponse.json({ isPlaying: false });
   }
 }
