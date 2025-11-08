@@ -39,24 +39,40 @@ export default function SpotifyPage() {
   // carrega letras sincronizadas
   useEffect(() => {
     async function loadLyrics() {
-      if (!now?.isPlaying || !now.track?.name) {
-        setLyrics([]);
-        setActiveIdx(-1);
-        return;
-      }
+      // limpa o timer antigo imediatamente
+      if (timerRef.current) clearInterval(timerRef.current);
+      setActiveIdx(-1);
+      setLyrics([]);
+
+      if (!now?.isPlaying || !now.track?.name) return;
+
+      // pequeno delay opcional para evitar race condition
+      await new Promise((r) => setTimeout(r, 100));
+
       const params = new URLSearchParams({
         track: now.track.name,
         artist: (now.artists || []).join(", "),
       });
       if (now.durationMs) params.set("durationMs", String(now.durationMs));
 
-      const r = await fetch(`/api/spotify/lyrics?${params.toString()}`, { cache: "no-store" });
-      const j = await r.json();
-      setLyrics(j.lyrics || []);
-      setActiveIdx(-1);
+      try {
+        const r = await fetch(`/api/spotify/lyrics?${params.toString()}`, {
+          cache: "no-store",
+        });
+        const j = await r.json();
+        setLyrics(j.lyrics || []);
+        setActiveIdx(-1);
+      } catch (e) {
+        console.error("Erro ao carregar letra:", e);
+        setLyrics([]);
+      }
     }
-    loadLyrics();
-  }, [now?.track?.id]);
+
+    // detecta troca de faixa (id ou nome diferentes)
+    if (now?.track?.id || now?.track?.name) {
+      loadLyrics();
+    }
+  }, [now?.track?.id, now?.track?.name]);
 
   // sincroniza tempo da letra com progresso da música
   useEffect(() => {
