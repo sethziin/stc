@@ -19,11 +19,6 @@ export default function SpotifyPage() {
   const [activeIdx, setActiveIdx] = useState<number>(-1);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // redireciona para login do Spotify
-  const handleLogin = () => {
-    window.location.href = "/api/spotify/login";
-  };
-
   // busca a música atual
   useEffect(() => {
     async function fetchNow() {
@@ -86,13 +81,14 @@ export default function SpotifyPage() {
     };
   }, [now?.isPlaying, now?.progressMs, lyrics]);
 
-  // estados da UI
+  // tela quando não estiver tocando nada
   const center = (
     <div className="flex flex-col items-center justify-center text-center">
       <h1 className="text-2xl text-white/70 mb-4">cri cri cri</h1>
     </div>
   );
 
+  // tela quando estiver tocando
   const playing = (
     <div className="flex flex-col items-center justify-center text-center">
       {/* cabeçalho da música */}

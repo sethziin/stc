@@ -1,68 +1,46 @@
-import { cookies } from "next/headers";
+import { NextResponse } from "next/server";
 
 const SPOTIFY_TOKEN_URL = "https://accounts.spotify.com/api/token";
 
-function basicAuth() {
-  const id = process.env.SPOTIFY_CLIENT_ID!;
-  const secret = process.env.SPOTIFY_CLIENT_SECRET!;
-  return Buffer.from(`${id}:${secret}`).toString("base64");
-}
+const client_id = process.env.SPOTIFY_CLIENT_ID!;
+const client_secret = process.env.SPOTIFY_CLIENT_SECRET!;
+const refresh_token = process.env.SPOTIFY_REFRESH_TOKEN!;
 
-// troca código de autorização pelo token
-export async function exchangeCodeForToken(code: string) {
-  const resp = await fetch(SPOTIFY_TOKEN_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      Authorization: `Basic ${basicAuth()}`,
-    },
-    body: new URLSearchParams({
-      grant_type: "authorization_code",
-      code,
-      redirect_uri: process.env.SPOTIFY_REDIRECT_URI!,
-    }),
-  });
-
-  if (!resp.ok) throw new Error("Failed to exchange code");
-  return resp.json() as Promise<{
-    access_token: string;
-    token_type: string;
-    scope: string;
-    expires_in: number;
-    refresh_token: string;
-  }>;
-}
-
-// atualiza o access token usando o refresh token
-export async function refreshAccessToken() {
-  const cookieStore = await cookies();
-  const refresh = cookieStore.get("spotify_refresh_token")?.value;
-  if (!refresh) throw new Error("Missing refresh token cookie");
-
-  const resp = await fetch(SPOTIFY_TOKEN_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      Authorization: `Basic ${basicAuth()}`,
-    },
-    body: new URLSearchParams({
-      grant_type: "refresh_token",
-      refresh_token: refresh,
-    }),
-    cache: "no-store",
-  });
-
-  if (!resp.ok) throw new Error("Failed to refresh access token");
-  return resp.json() as Promise<{
-    access_token: string;
-    token_type: string;
-    scope: string;
-    expires_in: number;
-  }>;
-}
-
-// pega o token pronto para usar
+// 1️⃣ Usa o refresh token fixo do .env para gerar novo access token
 export async function getAccessToken(): Promise<string> {
-  const refreshed = await refreshAccessToken();
-  return refreshed.access_token;
+  if (!refresh_token) throw new Error("Missing SPOTIFY_REFRESH_TOKEN in .env.local");
+
+  const body = new URLSearchParams({
+    grant_type: "refresh_token",
+    refresh_token,
+  });
+
+  const resp = await fetch(SPOTIFY_TOKEN_URL, {
+    method: "POST",
+    headers: {
+      Authorization:
+        "Basic " + Buffer.from(`${client_id}:${client_secret}`).toString("base64"),
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body,
+  });
+
+  if (!resp.ok) {
+    const text = await resp.text();
+    console.error("Spotify token refresh failed:", text);
+    throw new Error("Failed to refresh Spotify access token");
+  }
+
+  const data = await resp.json();
+  return data.access_token as string;
+}
+
+// 2️⃣ Endpoint opcional /api/spotify/token para depuração
+export async function GET() {
+  try {
+    const token = await getAccessToken();
+    return NextResponse.json({ ok: true, token });
+  } catch (err: any) {
+    return NextResponse.json({ ok: false, error: err.message });
+  }
 }
