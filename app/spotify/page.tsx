@@ -20,6 +20,7 @@ export default function SpotifyPage() {
   const [activeIdx, setActiveIdx] = useState<number>(-1);
   const [loadingLyrics, setLoadingLyrics] = useState<boolean>(false);
   const [lastTrackId, setLastTrackId] = useState<string | null>(null);
+  const [transitioning, setTransitioning] = useState<boolean>(false);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Atualiza o estado da faixa atual (polling)
@@ -29,15 +30,21 @@ export default function SpotifyPage() {
         const r = await fetch("/api/spotify/now-playing", { cache: "no-store" });
         const j: NowPlaying = await r.json();
 
-        // Detecta mudança de faixa antes do próximo ciclo
         if (lastTrackId && j.track?.id && j.track.id !== lastTrackId) {
-          setLyrics([]);
-          setActiveIdx(-1);
-          setLoadingLyrics(true);
+          // inicia transição visual
+          setTransitioning(true);
+          setTimeout(() => {
+            setLyrics([]);
+            setActiveIdx(-1);
+            setLoadingLyrics(true);
+            setNow(j);
+            setLastTrackId(j.track.id);
+            setTransitioning(false);
+          }, 300);
+        } else {
+          setNow(j);
+          setLastTrackId(j.track?.id ?? null);
         }
-
-        setNow(j);
-        setLastTrackId(j.track?.id ?? null);
       } catch {
         setNow({ isPlaying: false });
       }
@@ -79,11 +86,10 @@ export default function SpotifyPage() {
       }
     }
 
-    // só carrega se a faixa for diferente da anterior
     if (now?.track?.id) loadLyrics();
   }, [now?.track?.id]);
 
-  // Sincroniza tempo da letra com progresso
+  // Sincroniza tempo da letra
   useEffect(() => {
     if (!now?.isPlaying || !lyrics.length) {
       if (timerRef.current) clearInterval(timerRef.current);
@@ -107,28 +113,39 @@ export default function SpotifyPage() {
     };
   }, [now?.isPlaying, now?.progressMs, lyrics]);
 
-  // layout quando nada toca
+  // Layout quando nada toca
   const center = (
-    <div className="flex flex-col items-center justify-center text-center">
+    <div className="flex flex-col items-center justify-center text-center animate-fade-in">
       <h1 className="text-2xl text-white/70 mb-4">cri cri cri</h1>
     </div>
   );
 
-  // layout quando tocando
+  // Layout quando tocando
   const playing = (
-    <div className="flex flex-col items-center justify-center text-center">
+    <div
+      key={now?.track?.id}
+      className={`flex flex-col items-center justify-center text-center transition-all duration-500 ${
+        transitioning ? "opacity-0 translate-y-2" : "opacity-100 translate-y-0"
+      }`}
+    >
       <div className="flex items-center justify-center gap-4 mb-10">
         {now?.album?.image ? (
           <img
             src={now.album.image}
             alt="album"
-            className="w-20 h-20 rounded-md object-cover shadow-lg"
+            className={`w-24 h-24 rounded-xl object-cover shadow-lg transition-all duration-500 ${
+              transitioning ? "scale-95 opacity-0" : "scale-100 opacity-100"
+            }`}
           />
         ) : (
-          <div className="w-20 h-20 bg-white/5 rounded-md" />
+          <div className="w-24 h-24 bg-white/5 rounded-xl" />
         )}
         <div className="text-left">
-          <div className="text-2xl font-semibold text-white">
+          <div
+            className={`text-2xl font-semibold text-white transition-all duration-500 ${
+              transitioning ? "opacity-0 translate-y-2" : "opacity-100"
+            }`}
+          >
             {now?.track?.name || "—"}
           </div>
           <div className="text-sm text-white/60 mt-1">
@@ -146,7 +163,7 @@ export default function SpotifyPage() {
           {activeIdx >= 0 && lyrics[activeIdx] ? (
             <h2
               key={lyrics[activeIdx].timeMs}
-              className="text-3xl text-white font-medium tracking-wide animate-fade"
+              className="text-3xl text-white font-medium tracking-wide animate-fade-lyric"
               style={{
                 fontFamily: "Josefin Sans, sans-serif",
                 maxWidth: "80%",
@@ -162,19 +179,15 @@ export default function SpotifyPage() {
       )}
 
       <style jsx>{`
-        .animate-fade {
+        .animate-fade-lyric {
           opacity: 0;
-          transform: translateY(12px);
-          animation: fadeInOut 1s ease forwards;
+          transform: translateY(10px);
+          animation: fadeInLyric 0.8s ease forwards;
         }
-        @keyframes fadeInOut {
+        @keyframes fadeInLyric {
           0% {
             opacity: 0;
             transform: translateY(10px);
-          }
-          30% {
-            opacity: 1;
-            transform: translateY(0);
           }
           100% {
             opacity: 1;
@@ -189,13 +202,15 @@ export default function SpotifyPage() {
 
   return (
     <main className="relative min-h-screen bg-black text-white flex flex-col items-center justify-center p-6 select-none">
-      {/* player */}
-      <div className="w-full max-w-3xl flex flex-col items-center justify-center mb-24">
+      <div
+        className={`w-full max-w-3xl flex flex-col items-center justify-center mb-24 transition-all duration-500 ${
+          transitioning ? "opacity-0 translate-y-2" : "opacity-100 translate-y-0"
+        }`}
+      >
         {isPlaying ? playing : center}
       </div>
 
-      {/* card do Discord fixado na parte inferior */}
-      <div className="absolute bottom-10 flex flex-col items-center">
+      <div className="absolute bottom-10 flex flex-col items-center transition-all duration-500">
         <DiscordCard />
       </div>
 
@@ -204,9 +219,20 @@ export default function SpotifyPage() {
           background-color: #000;
           font-family: "Josefin Sans", sans-serif;
         }
-        ::selection {
-          background: #000;
-          color: #fff;
+        .animate-fade-in {
+          opacity: 0;
+          transform: translateY(8px);
+          animation: fadeIn 0.8s ease forwards;
+        }
+        @keyframes fadeIn {
+          0% {
+            opacity: 0;
+            transform: translateY(8px);
+          }
+          100% {
+            opacity: 1;
+            transform: translateY(0);
+          }
         }
       `}</style>
     </main>
