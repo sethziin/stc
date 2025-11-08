@@ -46,40 +46,42 @@ export default function DiscordCard() {
   if (!data) return null;
 
   return (
-    <div className="flex flex-col items-center bg-white/5 p-5 rounded-2xl shadow-lg backdrop-blur-md border border-white/10 w-[380px] hover:bg-white/10 transition-all duration-300">
-      {/* Avatar + Username */}
-      <div className="flex items-center gap-4 w-full mb-4">
-        <img
-          src={data.avatarUrl}
-          alt="avatar"
-          className="w-14 h-14 rounded-full object-cover border border-white/20"
-        />
-        <div className="flex flex-col text-left">
-          <div className="text-lg font-semibold text-white">{data.username}</div>
-          <div className="text-sm text-green-400 flex items-center gap-1">
-            <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-            Online
+    <div className="flex items-center justify-between w-[500px] h-[100px] bg-white/5 rounded-2xl backdrop-blur-md border border-white/10 shadow-lg px-5 py-3 hover:bg-white/10 transition-all duration-300">
+      {/* Avatar e nome */}
+      <div className="flex items-center gap-4">
+        <div className="relative">
+          <img
+            src={data.avatarUrl}
+            alt="avatar"
+            className="w-14 h-14 rounded-full object-cover border border-white/10"
+          />
+          <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-400 border-2 border-[#1e1e1e] rounded-full" />
+        </div>
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="text-white font-semibold text-lg">{data.username}</span>
+            {/* emojis ou badges opcionais */}
+            <span className="text-[#5865F2]">🟣</span>
           </div>
+          {data.spotify ? (
+            <div className="text-sm text-white/70">
+              Listening to <span className="text-white">{data.spotify.song}</span>
+              <br />
+              by {data.spotify.artist}
+            </div>
+          ) : (
+            <div className="text-sm text-white/50 italic">Online</div>
+          )}
         </div>
       </div>
 
-      {/* Atividade Spotify (se tiver) */}
-      {data.spotify ? (
-        <div className="flex items-center gap-3 bg-white/5 p-3 rounded-xl w-full transition-all">
-          <img
-            src={data.spotify.albumArtUrl}
-            alt="album"
-            className="w-12 h-12 rounded-md object-cover shadow-md"
-          />
-          <div className="text-left">
-            <div className="text-sm font-medium text-white">{data.spotify.song}</div>
-            <div className="text-xs text-white/60">{data.spotify.artist}</div>
-          </div>
-        </div>
-      ) : (
-        <div className="w-full text-center text-white/50 text-sm italic py-3">
-          Não ouvindo nada
-        </div>
+      {/* Capa do álbum (direita) */}
+      {data.spotify?.albumArtUrl && (
+        <img
+          src={data.spotify.albumArtUrl}
+          alt="album"
+          className="w-14 h-14 rounded-xl object-cover shadow-md"
+        />
       )}
 
       {/* Botão Perfil */}
@@ -87,9 +89,9 @@ export default function DiscordCard() {
         href="https://discord.com/users/789331231888244736"
         target="_blank"
         rel="noopener noreferrer"
-        className="mt-4 w-full text-center py-2 rounded-md bg-gradient-to-r from-[#5865F2]/90 to-[#7289da]/90 text-white font-medium hover:from-[#7289da] hover:to-[#5865F2] transition-all"
+        className="absolute inset-0 rounded-2xl"
       >
-        Perfil
+        <span className="sr-only">Perfil</span>
       </a>
     </div>
   );
