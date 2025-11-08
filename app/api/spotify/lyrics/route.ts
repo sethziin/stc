@@ -1,107 +1,89 @@
 import { NextResponse } from "next/server";
 
-export const runtime = "nodejs";
+function parseTimedLyrics(data: any) {
+  if (!data?.syncedLyrics) return null;
 
-async function safeFetch(url: string, asText = false) {
-  try {
-    const res = await fetch(url, {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/122 Safari/537.36",
-      },
-      cache: "no-store",
-    });
-    if (!res.ok) return null;
-    return asText ? await res.text() : await res.json();
-  } catch (e) {
-    console.error("Fetch failed:", e);
-    return null;
-  }
+  // Cada linha vem no formato: [mm:ss.xx] letra
+  const lines = data.syncedLyrics
+    .split("\n")
+    .map((raw: string) => {
+      const match = raw.match(/\[(\d+):(\d+\.\d+)\](.*)/);
+      if (!match) return null;
+      const [, min, sec, text] = match;
+      const timeMs = Math.floor((parseInt(min) * 60 + parseFloat(sec)) * 1000);
+      return { timeMs, line: text.trim() };
+    })
+    .filter((l) => l && l.line.length > 0);
+
+  return lines;
 }
 
-// limpa html e preserva quebras de linha
-function stripHtml(html: string): string {
-  return html
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<\/p>/gi, "\n")
-    .replace(/<\/div>/gi, "\n")
-    .replace(/<[^>]*>/g, "")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+function parsePlainLyrics(text: string, durationMs = 180000) {
+  const rawLines = text
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0);
+
+  const step = Math.max(800, durationMs / Math.max(rawLines.length, 1));
+  return rawLines.map((line, i) => ({
+    timeMs: i * step,
+    line,
+  }));
 }
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const track = searchParams.get("track");
   const artist = searchParams.get("artist");
+  const durationMs = Number(searchParams.get("durationMs") || 180000);
 
-  if (!track || !artist)
-    return NextResponse.json({ error: "Missing params" }, { status: 400 });
-
-  console.log("🎵 Buscando letra:", `${track} - ${artist}`);
-
-  // 1️⃣ tenta MatchLyric sincronizada
-  const ml = await safeFetch(
-    `https://api.matchlyric.com/search?q=${encodeURIComponent(`${track} ${artist}`)}`
-  );
-  if (ml?.lyrics?.length) {
-    console.log("✅ MatchLyric (sincronizada)");
-    return NextResponse.json({ lyrics: ml.lyrics });
+  if (!track) {
+    return NextResponse.json({ lyrics: [] });
   }
 
-  // 2️⃣ tenta MatchLyric plain
-  const mlPlain = await safeFetch(
-    `https://api.matchlyric.com/plain?q=${encodeURIComponent(`${track} ${artist}`)}`
-  );
-  if (mlPlain?.lyrics) {
-    console.log("✅ MatchLyric (texto completo)");
-    return NextResponse.json({ fullLyrics: mlPlain.lyrics });
-  }
-
-  // 3️⃣ busca no Genius
-  const token = process.env.GENIUS_ACCESS_TOKEN;
-  if (token) {
-    const search = await safeFetch(
-      `https://api.genius.com/search?q=${encodeURIComponent(`${track} ${artist}`)}&access_token=${token}`
+  try {
+    // 🎵 1️⃣ busca letras sincronizadas do LRCLIB
+    const lrclib = await fetch(
+      `https://lrclib.net/api/get?track_name=${encodeURIComponent(
+        track
+      )}&artist_name=${encodeURIComponent(artist || "")}`,
+      { cache: "no-store" }
     );
 
-    if (search?.response?.hits?.length) {
-      const url = search.response.hits[0].result.url;
-      console.log("🌐 Genius URL:", url);
+    if (lrclib.ok) {
+      const data = await lrclib.json();
 
-      const html = await safeFetch(url, true);
-      if (html) {
-        // tenta todos os formatos possíveis
-        const matches = [
-          ...html.matchAll(
-            /<div class="Lyrics__Container[^>]*>([\s\S]*?)<\/div>/g
-          ),
-          ...html.matchAll(
-            /<div class="Lyrics__Container-sc-[^"]+">([\s\S]*?)<\/div>/g
-          ),
-          ...html.matchAll(
-            /<div data-lyrics-container="true">([\s\S]*?)<\/div>/g
-          ),
-          ...html.matchAll(
-            /<section[^>]*data-lyrics-container[^>]*>([\s\S]*?)<\/section>/g
-          ),
-        ];
+      // tenta sincronizada primeiro
+      const synced = parseTimedLyrics(data);
+      if (synced && synced.length > 0) {
+        return NextResponse.json({ lyrics: synced });
+      }
 
-        if (matches.length) {
-          const combined = matches.map((m) => m[1]).join("\n");
-          const cleaned = stripHtml(combined);
-
-          if (cleaned && cleaned.length > 50) {
-            console.log("✅ Genius (parsed com sucesso)");
-            return NextResponse.json({ fullLyrics: cleaned });
-          }
-        }
+      // tenta fallback textual (plainLyrics)
+      if (data.plainLyrics) {
+        const plain = parsePlainLyrics(data.plainLyrics, durationMs);
+        if (plain.length > 0) return NextResponse.json({ lyrics: plain });
       }
     }
-  }
 
-  console.log("⚠️ Nenhuma letra encontrada");
-  return NextResponse.json({
-    fullLyrics: "Nenhuma letra disponível para esta faixa.",
-  });
+    // 🎵 2️⃣ fallback: lyrics.ovh (texto puro)
+    const ovh = await fetch(
+      `https://api.lyrics.ovh/v1/${encodeURIComponent(artist || "")}/${encodeURIComponent(
+        track
+      )}`,
+      { cache: "no-store" }
+    );
+    if (ovh.ok) {
+      const j = await ovh.json();
+      if (j?.lyrics) {
+        const lines = parsePlainLyrics(j.lyrics, durationMs);
+        return NextResponse.json({ lyrics: lines });
+      }
+    }
+
+    return NextResponse.json({ lyrics: [] });
+  } catch (err) {
+    console.error("Lyrics fetch error:", err);
+    return NextResponse.json({ lyrics: [] });
+  }
 }
