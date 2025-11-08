@@ -155,9 +155,9 @@ export default function SpotifyPage() {
       </div>
 
       {loadingLyrics ? (
-        <p className="text-white/50 italic animate-pulse">Carregando letra...</p>
+        <p className="text-white/50 italic animate-pulse">...</p>
       ) : !lyrics.length ? (
-        <p className="text-white/50 italic">Sem letra sincronizada para esta faixa.</p>
+        <p className="text-white/50 italic">Não foi possível encontrar a letra da música.</p>
       ) : (
         <div className="h-[40vh] flex items-center justify-center">
           {activeIdx >= 0 && lyrics[activeIdx] ? (
