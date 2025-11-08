@@ -1,31 +1,25 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { exchangeCodeForToken } from "../token";
+import { getAccessToken } from "../token"; // usa o novo helper
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const code = searchParams.get("code");
 
   if (!code) {
-    return new NextResponse("Missing code", { status: 400 });
+    return NextResponse.json({ error: "Missing authorization code" }, { status: 400 });
   }
 
   try {
-    const tokens = await exchangeCodeForToken(code);
+    // tenta obter um novo access token diretamente com o refresh_token do .env
+    const token = await getAccessToken();
 
-    const cookieStore = await cookies();
-    cookieStore.set("spotify_refresh_token", tokens.refresh_token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/",
-      maxAge: 60 * 60 * 24 * 365, // 1 ano
-    });
+    // redireciona para /spotify após login bem-sucedido
+    const redirectUrl = new URL("/spotify", req.url);
+    redirectUrl.searchParams.set("token", token);
 
-    const site = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
-    return NextResponse.redirect(`${site}/spotify`);
-  } catch (e) {
-    console.error(e);
-    return new NextResponse("Token exchange failed", { status: 500 });
+    return NextResponse.redirect(redirectUrl.toString());
+  } catch (err: any) {
+    console.error("Spotify callback error:", err);
+    return NextResponse.json({ error: "Failed to complete Spotify authorization" });
   }
 }
