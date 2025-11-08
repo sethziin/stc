@@ -160,11 +160,12 @@ export default function SpotifyPage() {
 
   return (
     <main className="relative min-h-screen flex flex-col items-center justify-center overflow-hidden select-none">
-      {/* Fundo suave animado */}
+      {/* Fundo suave animado com transição entre cores */}
       <div
-        className="absolute inset-0 -z-10 animated-bg"
+        className="absolute inset-0 -z-10 animated-bg transition-all duration-[3000ms] ease-[cubic-bezier(0.4,0,0.2,1)]"
         style={{
           background: `linear-gradient(120deg, ${colors[0]}, ${colors[1]})`,
+          transition: "background 3s ease-in-out"
         }}
       ></div>
 
@@ -226,18 +227,19 @@ export default function SpotifyPage() {
           background-size: 200% 200%;
           filter: blur(60px);
           animation: gradientShift 40s ease-in-out infinite alternate,
-                     pulseGlow 10s ease-in-out infinite;
+                    pulseGlow 10s ease-in-out infinite;
+          transition: background 3s ease-in-out;
         }
         @keyframes gradientShift {
           0% { background-position: 0% 50%; }
           50% { background-position: 100% 50%; }
           100% { background-position: 0% 50%; }
         }
+
         @keyframes pulseGlow {
           0%, 100% { opacity: 0.9; transform: scale(1); }
           50% { opacity: 1; transform: scale(1.05); }
         }
-
         /* Letras suaves */
         .animate-fade-lyric {
           opacity: 0;
