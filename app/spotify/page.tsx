@@ -25,7 +25,7 @@ export default function SpotifyPage() {
   const [textColor, setTextColor] = useState<string>("white");
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // 🎨 Extrai duas cores médias e cria contraste suave
+  // 🎨 Extrai cores da capa e define contraste automático
   async function extractDominantColors(
     url: string
   ): Promise<{ colors: [string, string]; textColor: string }> {
@@ -45,7 +45,7 @@ export default function SpotifyPage() {
         const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
 
         let r = 0, g = 0, b = 0, r2 = 0, g2 = 0, b2 = 0, count = 0;
-        for (let i = 0; i < data.length; i += 8) { // amostra leve
+        for (let i = 0; i < data.length; i += 8) {
           const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
           if (avg > 128) {
             r += data[i]; g += data[i + 1]; b += data[i + 2];
@@ -67,7 +67,7 @@ export default function SpotifyPage() {
     });
   }
 
-  // Atualiza cores com base na música
+  // Atualiza música e cores
   useEffect(() => {
     async function fetchNow() {
       try {
@@ -159,8 +159,8 @@ export default function SpotifyPage() {
   const isPlaying = now?.isPlaying && now?.track?.name;
 
   return (
-    <main className="relative min-h-screen flex flex-col items-center justify-center p-6 select-none overflow-hidden">
-      {/* 🎨 Fundo suave com gradiente fluido */}
+    <main className="relative min-h-screen flex flex-col items-center justify-center overflow-hidden select-none">
+      {/* Fundo suave animado */}
       <div
         className="absolute inset-0 -z-10 animated-bg"
         style={{
@@ -168,38 +168,47 @@ export default function SpotifyPage() {
         }}
       ></div>
 
+      {/* Container principal */}
       <div
-        className={`w-full max-w-3xl flex flex-col items-center justify-center mb-24 text-center transition-all duration-700 ${
+        className={`w-full max-w-3xl text-center px-4 transition-all duration-700 ${
           transitioning ? "opacity-0 translate-y-2" : "opacity-100 translate-y-0"
         }`}
         style={{ color: textColor }}
       >
         {isPlaying ? (
           <>
-            {now?.album?.image && (
-              <img
-                src={now.album.image}
-                alt="album"
-                className="w-28 h-28 rounded-2xl mb-6 shadow-xl object-cover"
-              />
-            )}
-            <h1 className="text-2xl font-bold">{now?.track?.name}</h1>
-            <p className="text-sm opacity-80 mt-1">
-              {(now?.artists || []).join(", ")}
-            </p>
+            <div className="flex flex-col items-center mb-8">
+              {now?.album?.image && (
+                <img
+                  src={now.album.image}
+                  alt="album"
+                  className="w-40 h-40 rounded-3xl shadow-2xl object-cover mb-6 transition-all duration-700 hover:scale-[1.02]"
+                />
+              )}
+              <h1 className="text-3xl font-semibold tracking-tight drop-shadow-sm mb-1">
+                {now?.track?.name}
+              </h1>
+              <p className="text-base opacity-80">{(now?.artists || []).join(", ")}</p>
+            </div>
+
             {loadingLyrics ? (
-              <p className="italic mt-10 opacity-60">Carregando letra...</p>
+              <p className="italic text-lg opacity-60 animate-pulse mt-10">Carregando letra...</p>
             ) : lyrics.length ? (
-              <h2
-                key={lyrics[activeIdx]?.timeMs}
-                className="text-3xl mt-16 animate-fade-lyric"
-              >
-                {lyrics[activeIdx]?.line || "..."}
-              </h2>
+              <div className="h-[35vh] flex items-center justify-center">
+                <h2
+                  key={lyrics[activeIdx]?.timeMs}
+                  className="text-2xl font-medium animate-fade-lyric"
+                  style={{
+                    maxWidth: "80%",
+                    lineHeight: "1.5",
+                    textShadow: textColor === "white" ? "0 0 10px rgba(0,0,0,0.5)" : "none",
+                  }}
+                >
+                  {lyrics[activeIdx]?.line || "…"}
+                </h2>
+              </div>
             ) : (
-              <p className="italic mt-16 opacity-60">
-                Sem letra sincronizada
-              </p>
+              <p className="italic opacity-60 mt-16">Sem letra sincronizada</p>
             )}
           </>
         ) : (
@@ -207,32 +216,42 @@ export default function SpotifyPage() {
         )}
       </div>
 
-      <div className="absolute bottom-10 flex flex-col items-center transition-all duration-700">
+      <div className="absolute bottom-8 flex flex-col items-center transition-all duration-700">
         <DiscordCard />
       </div>
 
       <style jsx global>{`
+        /* Fundo animado uniforme e "respirante" */
         .animated-bg {
           background-size: 200% 200%;
-          animation: gradientShift 30s ease-in-out infinite alternate;
-          filter: blur(30px);
-          transform: scale(1.2);
+          filter: blur(60px);
+          animation: gradientShift 40s ease-in-out infinite alternate,
+                     pulseGlow 10s ease-in-out infinite;
         }
-
         @keyframes gradientShift {
           0% { background-position: 0% 50%; }
           50% { background-position: 100% 50%; }
           100% { background-position: 0% 50%; }
         }
+        @keyframes pulseGlow {
+          0%, 100% { opacity: 0.9; transform: scale(1); }
+          50% { opacity: 1; transform: scale(1.05); }
+        }
 
+        /* Letras suaves */
         .animate-fade-lyric {
           opacity: 0;
           transform: translateY(10px);
-          animation: fadeInLyric 0.8s ease forwards;
+          animation: fadeInLyric 1s ease forwards;
         }
         @keyframes fadeInLyric {
           from { opacity: 0; transform: translateY(10px); }
           to { opacity: 1; transform: translateY(0); }
+        }
+
+        body {
+          background: #000;
+          font-family: "Josefin Sans", sans-serif;
         }
       `}</style>
     </main>
