@@ -21,9 +21,40 @@ export default function SpotifyPage() {
   const [loadingLyrics, setLoadingLyrics] = useState<boolean>(false);
   const [lastTrackId, setLastTrackId] = useState<string | null>(null);
   const [transitioning, setTransitioning] = useState<boolean>(false);
+  const [bgColor, setBgColor] = useState<string>("#000000");
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Atualiza o estado da faixa atual (polling)
+  // 🔹 Detecta cor média da imagem
+  async function getAverageColor(url: string): Promise<string> {
+    return new Promise((resolve) => {
+      const img = document.createElement("img");
+      img.crossOrigin = "Anonymous";
+      img.src = url;
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return resolve("#000");
+        canvas.width = img.width;
+        canvas.height = img.height;
+        ctx.drawImage(img, 0, 0, img.width, img.height);
+        const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+        let r = 0, g = 0, b = 0, count = 0;
+        for (let i = 0; i < data.length; i += 4) {
+          r += data[i];
+          g += data[i + 1];
+          b += data[i + 2];
+          count++;
+        }
+        r = Math.floor(r / count);
+        g = Math.floor(g / count);
+        b = Math.floor(b / count);
+        resolve(`rgb(${r},${g},${b})`);
+      };
+      img.onerror = () => resolve("#000");
+    });
+  }
+
+  // 🔹 Atualiza o estado da faixa atual (polling)
   useEffect(() => {
     async function fetchNow() {
       try {
@@ -41,6 +72,11 @@ export default function SpotifyPage() {
             setLastTrackId(j.track.id);
             setTransitioning(false);
           }, 300);
+
+          // muda cor de fundo baseada na nova capa
+          if (j.album?.image) {
+            getAverageColor(j.album.image).then(setBgColor);
+          }
         } else {
           setNow(j);
           setLastTrackId(j.track?.id ?? null);
@@ -55,7 +91,7 @@ export default function SpotifyPage() {
     return () => clearInterval(id);
   }, [lastTrackId]);
 
-  // Carrega letra sincronizada
+  // 🔹 Carrega letra sincronizada
   useEffect(() => {
     async function loadLyrics() {
       if (!now?.isPlaying || !now.track?.name) {
@@ -89,7 +125,7 @@ export default function SpotifyPage() {
     if (now?.track?.id) loadLyrics();
   }, [now?.track?.id]);
 
-  // Sincroniza tempo da letra
+  // 🔹 Sincroniza tempo da letra
   useEffect(() => {
     if (!now?.isPlaying || !lyrics.length) {
       if (timerRef.current) clearInterval(timerRef.current);
@@ -113,14 +149,12 @@ export default function SpotifyPage() {
     };
   }, [now?.isPlaying, now?.progressMs, lyrics]);
 
-  // Layout quando nada toca
   const center = (
     <div className="flex flex-col items-center justify-center text-center animate-fade-in">
       <h1 className="text-2xl text-white/70 mb-4">cri cri cri</h1>
     </div>
   );
 
-  // Layout quando tocando
   const playing = (
     <div
       key={now?.track?.id}
@@ -133,7 +167,7 @@ export default function SpotifyPage() {
           <img
             src={now.album.image}
             alt="album"
-            className={`w-24 h-24 rounded-xl object-cover shadow-lg transition-all duration-500 ${
+            className={`w-24 h-24 rounded-xl object-cover shadow-lg transition-all duration-700 ${
               transitioning ? "scale-95 opacity-0" : "scale-100 opacity-100"
             }`}
           />
@@ -142,7 +176,7 @@ export default function SpotifyPage() {
         )}
         <div className="text-left">
           <div
-            className={`text-2xl font-semibold text-white transition-all duration-500 ${
+            className={`text-2xl font-semibold text-white transition-all duration-700 ${
               transitioning ? "opacity-0 translate-y-2" : "opacity-100"
             }`}
           >
@@ -155,9 +189,9 @@ export default function SpotifyPage() {
       </div>
 
       {loadingLyrics ? (
-        <p className="text-white/50 italic animate-pulse">...</p>
+        <p className="text-white/50 italic animate-pulse">Carregando letra...</p>
       ) : !lyrics.length ? (
-        <p className="text-white/50 italic">Não foi possível encontrar a letra da música.</p>
+        <p className="text-white/50 italic">Sem letra sincronizada para esta faixa.</p>
       ) : (
         <div className="h-[40vh] flex items-center justify-center">
           {activeIdx >= 0 && lyrics[activeIdx] ? (
@@ -201,16 +235,21 @@ export default function SpotifyPage() {
   const isPlaying = now?.isPlaying && now?.track?.name;
 
   return (
-    <main className="relative min-h-screen bg-black text-white flex flex-col items-center justify-center p-6 select-none">
+    <main
+      className="relative min-h-screen text-white flex flex-col items-center justify-center p-6 select-none transition-all duration-1000"
+      style={{
+        background: `radial-gradient(circle at 20% 20%, ${bgColor}, #000)`,
+      }}
+    >
       <div
-        className={`w-full max-w-3xl flex flex-col items-center justify-center mb-24 transition-all duration-500 ${
+        className={`w-full max-w-3xl flex flex-col items-center justify-center mb-24 transition-all duration-700 ${
           transitioning ? "opacity-0 translate-y-2" : "opacity-100 translate-y-0"
         }`}
       >
         {isPlaying ? playing : center}
       </div>
 
-      <div className="absolute bottom-10 flex flex-col items-center transition-all duration-500">
+      <div className="absolute bottom-10 flex flex-col items-center transition-all duration-700">
         <DiscordCard />
       </div>
 
@@ -218,21 +257,6 @@ export default function SpotifyPage() {
         body {
           background-color: #000;
           font-family: "Josefin Sans", sans-serif;
-        }
-        .animate-fade-in {
-          opacity: 0;
-          transform: translateY(8px);
-          animation: fadeIn 0.8s ease forwards;
-        }
-        @keyframes fadeIn {
-          0% {
-            opacity: 0;
-            transform: translateY(8px);
-          }
-          100% {
-            opacity: 1;
-            transform: translateY(0);
-          }
         }
       `}</style>
     </main>
