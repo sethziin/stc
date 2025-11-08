@@ -1,9 +1,7 @@
 import { NextResponse } from "next/server";
 
-// ⚙️ Força runtime Node (não Edge, pq precisamos de fetch sem restrição de CORS)
 export const runtime = "nodejs";
 
-// Função utilitária pra fetch seguro
 async function safeFetch(url: string, asText = false) {
   try {
     const res = await fetch(url, {
@@ -21,10 +19,12 @@ async function safeFetch(url: string, asText = false) {
   }
 }
 
-// remove tags html e limpa texto
+// limpa html e preserva quebras de linha
 function stripHtml(html: string): string {
   return html
     .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n")
+    .replace(/<\/div>/gi, "\n")
     .replace(/<[^>]*>/g, "")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
@@ -38,50 +38,61 @@ export async function GET(req: Request) {
   if (!track || !artist)
     return NextResponse.json({ error: "Missing params" }, { status: 400 });
 
-  console.log("🎵 Searching lyrics for:", `${track} - ${artist}`);
+  console.log("🎵 Buscando letra:", `${track} - ${artist}`);
 
-  // 1️⃣ MatchLyric API — sincronizada
+  // 1️⃣ tenta MatchLyric sincronizada
   const ml = await safeFetch(
     `https://api.matchlyric.com/search?q=${encodeURIComponent(`${track} ${artist}`)}`
   );
-
   if (ml?.lyrics?.length) {
-    console.log("✅ MatchLyric sync lyrics found");
+    console.log("✅ MatchLyric (sincronizada)");
     return NextResponse.json({ lyrics: ml.lyrics });
   }
 
-  // 2️⃣ MatchLyric plain (letra completa)
+  // 2️⃣ tenta MatchLyric plain
   const mlPlain = await safeFetch(
     `https://api.matchlyric.com/plain?q=${encodeURIComponent(`${track} ${artist}`)}`
   );
   if (mlPlain?.lyrics) {
-    console.log("✅ MatchLyric plain lyrics found");
+    console.log("✅ MatchLyric (texto completo)");
     return NextResponse.json({ fullLyrics: mlPlain.lyrics });
   }
 
-  // 3️⃣ Genius API search
+  // 3️⃣ busca no Genius
   const token = process.env.GENIUS_ACCESS_TOKEN;
   if (token) {
-    const genius = await safeFetch(
+    const search = await safeFetch(
       `https://api.genius.com/search?q=${encodeURIComponent(`${track} ${artist}`)}&access_token=${token}`
     );
 
-    if (genius?.response?.hits?.length) {
-      const url = genius.response.hits[0].result.url;
+    if (search?.response?.hits?.length) {
+      const url = search.response.hits[0].result.url;
       console.log("🌐 Genius URL:", url);
 
       const html = await safeFetch(url, true);
       if (html) {
-        // tenta múltiplas variantes do container
-        const match =
-          html.match(/<div class="Lyrics__Container[^>]*>([\s\S]*?)<\/div>/) ||
-          html.match(/<div data-lyrics-container="true">([\s\S]*?)<\/div>/) ||
-          html.match(/<div class="lyrics">([\s\S]*?)<\/div>/);
+        // tenta todos os formatos possíveis
+        const matches = [
+          ...html.matchAll(
+            /<div class="Lyrics__Container[^>]*>([\s\S]*?)<\/div>/g
+          ),
+          ...html.matchAll(
+            /<div class="Lyrics__Container-sc-[^"]+">([\s\S]*?)<\/div>/g
+          ),
+          ...html.matchAll(
+            /<div data-lyrics-container="true">([\s\S]*?)<\/div>/g
+          ),
+          ...html.matchAll(
+            /<section[^>]*data-lyrics-container[^>]*>([\s\S]*?)<\/section>/g
+          ),
+        ];
 
-        if (match) {
-          const cleaned = stripHtml(match[1]);
-          if (cleaned.length > 50) {
-            console.log("✅ Genius lyrics parsed");
+        if (matches.length) {
+          const combined = matches.map((m) => m[1]).join("\n");
+          const cleaned = stripHtml(combined);
+
+          if (cleaned && cleaned.length > 50) {
+            console.log("✅ Genius (parsed com sucesso)");
             return NextResponse.json({ fullLyrics: cleaned });
           }
         }
@@ -89,7 +100,7 @@ export async function GET(req: Request) {
     }
   }
 
-  console.log("⚠️ No lyrics found in any source");
+  console.log("⚠️ Nenhuma letra encontrada");
   return NextResponse.json({
     fullLyrics: "Nenhuma letra disponível para esta faixa.",
   });
