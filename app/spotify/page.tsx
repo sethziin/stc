@@ -165,6 +165,12 @@ export default function SpotifyPage() {
   return (
     <main className="min-h-screen bg-black text-white flex items-center justify-center p-6 select-none">
       <div className="w-full max-w-3xl flex flex-col items-center justify-center">
+        {/* card do discord */}
+        <div className="mb-10">
+          <DiscordCard />
+        </div>
+
+        {/* player do spotify */}
         {isPlaying ? playing : center}
       </div>
       <style jsx global>{`

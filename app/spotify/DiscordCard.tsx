@@ -46,27 +46,30 @@ export default function DiscordCard() {
   if (!data) return null;
 
   return (
-    <main className="min-h-screen bg-black text-white flex flex-col items-center justify-center p-6 gap-10 select-none">
-      {/* card do Discord */}
-      <div className="mb-10">
-        <DiscordCard />
+    <div className="flex items-center gap-4 bg-white/5 p-4 rounded-2xl shadow-lg backdrop-blur-md border border-white/10 w-[380px] hover:bg-white/10 transition-all duration-300">
+      <img
+        src={data.avatarUrl}
+        alt="avatar"
+        className="w-14 h-14 rounded-full object-cover"
+      />
+      <div className="flex flex-col text-left">
+        <div className="text-lg font-semibold text-white">{data.username}</div>
+        {data.spotify ? (
+          <div className="text-white/70 text-sm mt-1">
+            🎧 {data.spotify.song}
+            <div className="text-white/40 text-xs">{data.spotify.artist}</div>
+          </div>
+        ) : (
+          <div className="text-white/50 text-sm italic mt-1">Não ouvindo nada</div>
+        )}
       </div>
-
-      {/* conteúdo do player Spotify */}
-      <div className="w-full max-w-3xl flex flex-col items-center justify-center">
-        {isPlaying ? playing : center}
-      </div>
-
-      <style jsx global>{`
-        body {
-          background-color: #000;
-          font-family: "Josefin Sans", sans-serif;
-        }
-        ::selection {
-          background: #000;
-          color: #fff;
-        }
-      `}</style>
-    </main>
+      {data.spotify?.albumArtUrl && (
+        <img
+          src={data.spotify.albumArtUrl}
+          alt="album"
+          className="ml-auto w-12 h-12 rounded-md object-cover"
+        />
+      )}
+    </div>
   );
 }
