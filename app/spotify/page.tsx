@@ -82,17 +82,14 @@ export default function SpotifyPage() {
     };
   }, [now?.isPlaying, now?.progressMs, lyrics]);
 
-  // tela quando não estiver tocando nada
   const center = (
     <div className="flex flex-col items-center justify-center text-center">
       <h1 className="text-2xl text-white/70 mb-4">cri cri cri</h1>
     </div>
   );
 
-  // tela quando estiver tocando
   const playing = (
     <div className="flex flex-col items-center justify-center text-center">
-      {/* cabeçalho da música */}
       <div className="flex items-center justify-center gap-4 mb-10">
         {now?.album?.image ? (
           <img
@@ -113,7 +110,6 @@ export default function SpotifyPage() {
         </div>
       </div>
 
-      {/* letra atual */}
       {!lyrics.length ? (
         <p className="text-white/50 italic">Sem letra sincronizada para esta faixa.</p>
       ) : (
@@ -163,16 +159,25 @@ export default function SpotifyPage() {
   const isPlaying = now?.isPlaying && now?.track?.name;
 
   return (
-    <main className="min-h-screen bg-black text-white flex items-center justify-center p-6 select-none">
-      <div className="w-full max-w-3xl flex flex-col items-center justify-center">
-        {/* card do discord */}
-        <div className="mb-10">
-          <DiscordCard />
-        </div>
-
-        {/* player do spotify */}
+    <main className="relative min-h-screen bg-black text-white flex flex-col items-center justify-center p-6 select-none">
+      {/* player do spotify */}
+      <div className="w-full max-w-3xl flex flex-col items-center justify-center mb-24">
         {isPlaying ? playing : center}
       </div>
+
+      {/* card do discord fixado na parte inferior */}
+      <div className="absolute bottom-10 flex flex-col items-center">
+        <DiscordCard />
+        <a
+          href="https://discord.com/users/789331231888244736"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-3 px-5 py-2 border border-white/30 rounded-md text-white/80 hover:bg-white/10 transition-all"
+        >
+          Perfil
+        </a>
+      </div>
+
       <style jsx global>{`
         body {
           background-color: #000;
