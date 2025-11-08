@@ -21,11 +21,13 @@ export default function SpotifyPage() {
   const [loadingLyrics, setLoadingLyrics] = useState<boolean>(false);
   const [lastTrackId, setLastTrackId] = useState<string | null>(null);
   const [transitioning, setTransitioning] = useState<boolean>(false);
-  const [bgColor, setBgColor] = useState<string>("#000000");
+  const [bgGradient, setBgGradient] = useState<string>(
+    "radial-gradient(circle at 20% 20%, #000000, #000000)"
+  );
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // 🔹 Detecta cor média da imagem
-  async function getAverageColor(url: string): Promise<string> {
+  // 🔹 Extrai duas cores principais da capa (clara e escura)
+  async function extractDominantGradient(url: string): Promise<string> {
     return new Promise((resolve) => {
       const img = document.createElement("img");
       img.crossOrigin = "Anonymous";
@@ -33,28 +35,44 @@ export default function SpotifyPage() {
       img.onload = () => {
         const canvas = document.createElement("canvas");
         const ctx = canvas.getContext("2d");
-        if (!ctx) return resolve("#000");
+        if (!ctx) return resolve("radial-gradient(circle, #000, #000)");
         canvas.width = img.width;
         canvas.height = img.height;
         ctx.drawImage(img, 0, 0, img.width, img.height);
         const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-        let r = 0, g = 0, b = 0, count = 0;
+
+        let r = 0, g = 0, b = 0, r2 = 0, g2 = 0, b2 = 0, count = 0;
         for (let i = 0; i < data.length; i += 4) {
-          r += data[i];
-          g += data[i + 1];
-          b += data[i + 2];
+          const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
+          if (avg > 128) {
+            r += data[i];
+            g += data[i + 1];
+            b += data[i + 2];
+          } else {
+            r2 += data[i];
+            g2 += data[i + 1];
+            b2 += data[i + 2];
+          }
           count++;
         }
+
         r = Math.floor(r / count);
         g = Math.floor(g / count);
         b = Math.floor(b / count);
-        resolve(`rgb(${r},${g},${b})`);
+        r2 = Math.floor(r2 / count);
+        g2 = Math.floor(g2 / count);
+        b2 = Math.floor(b2 / count);
+
+        const bright = `rgb(${r},${g},${b})`;
+        const dark = `rgb(${r2},${g2},${b2})`;
+
+        resolve(`radial-gradient(circle at 20% 20%, ${bright}, ${dark})`);
       };
-      img.onerror = () => resolve("#000");
+      img.onerror = () => resolve("radial-gradient(circle, #000, #000)");
     });
   }
 
-  // 🔹 Atualiza o estado da faixa atual (polling)
+  // 🔹 Atualiza o estado da faixa atual
   useEffect(() => {
     async function fetchNow() {
       try {
@@ -62,7 +80,6 @@ export default function SpotifyPage() {
         const j: NowPlaying = await r.json();
 
         if (lastTrackId && j.track?.id && j.track.id !== lastTrackId) {
-          // inicia transição visual
           setTransitioning(true);
           setTimeout(() => {
             setLyrics([]);
@@ -71,11 +88,11 @@ export default function SpotifyPage() {
             setNow(j);
             setLastTrackId(j.track.id);
             setTransitioning(false);
-          }, 300);
+          }, 400);
 
-          // muda cor de fundo baseada na nova capa
+          // muda o gradiente com base na nova capa
           if (j.album?.image) {
-            getAverageColor(j.album.image).then(setBgColor);
+            extractDominantGradient(j.album.image).then(setBgGradient);
           }
         } else {
           setNow(j);
@@ -91,7 +108,7 @@ export default function SpotifyPage() {
     return () => clearInterval(id);
   }, [lastTrackId]);
 
-  // 🔹 Carrega letra sincronizada
+  // 🔹 Carrega letra
   useEffect(() => {
     async function loadLyrics() {
       if (!now?.isPlaying || !now.track?.name) {
@@ -125,7 +142,7 @@ export default function SpotifyPage() {
     if (now?.track?.id) loadLyrics();
   }, [now?.track?.id]);
 
-  // 🔹 Sincroniza tempo da letra
+  // 🔹 Sincroniza letra com tempo
   useEffect(() => {
     if (!now?.isPlaying || !lyrics.length) {
       if (timerRef.current) clearInterval(timerRef.current);
@@ -149,16 +166,12 @@ export default function SpotifyPage() {
     };
   }, [now?.isPlaying, now?.progressMs, lyrics]);
 
-  const center = (
-    <div className="flex flex-col items-center justify-center text-center animate-fade-in">
-      <h1 className="text-2xl text-white/70 mb-4">cri cri cri</h1>
-    </div>
-  );
+  const isPlaying = now?.isPlaying && now?.track?.name;
 
   const playing = (
     <div
       key={now?.track?.id}
-      className={`flex flex-col items-center justify-center text-center transition-all duration-500 ${
+      className={`flex flex-col items-center justify-center text-center transition-all duration-700 ${
         transitioning ? "opacity-0 translate-y-2" : "opacity-100 translate-y-0"
       }`}
     >
@@ -167,12 +180,12 @@ export default function SpotifyPage() {
           <img
             src={now.album.image}
             alt="album"
-            className={`w-24 h-24 rounded-xl object-cover shadow-lg transition-all duration-700 ${
+            className={`w-28 h-28 rounded-2xl object-cover shadow-xl transition-all duration-700 ${
               transitioning ? "scale-95 opacity-0" : "scale-100 opacity-100"
             }`}
           />
         ) : (
-          <div className="w-24 h-24 bg-white/5 rounded-xl" />
+          <div className="w-28 h-28 bg-white/5 rounded-xl" />
         )}
         <div className="text-left">
           <div
@@ -182,14 +195,14 @@ export default function SpotifyPage() {
           >
             {now?.track?.name || "—"}
           </div>
-          <div className="text-sm text-white/60 mt-1">
+          <div className="text-sm text-white/70 mt-1">
             {(now?.artists || []).join(", ") || "—"}
           </div>
         </div>
       </div>
 
       {loadingLyrics ? (
-        <p className="text-white/50 italic animate-pulse">Carregando letra...</p>
+        <p className="text-white/60 italic animate-pulse">Carregando letra...</p>
       ) : !lyrics.length ? (
         <p className="text-white/50 italic">Sem letra sincronizada para esta faixa.</p>
       ) : (
@@ -232,21 +245,19 @@ export default function SpotifyPage() {
     </div>
   );
 
-  const isPlaying = now?.isPlaying && now?.track?.name;
-
   return (
     <main
       className="relative min-h-screen text-white flex flex-col items-center justify-center p-6 select-none transition-all duration-1000"
-      style={{
-        background: `radial-gradient(circle at 20% 20%, ${bgColor}, #000)`,
-      }}
+      style={{ background: bgGradient }}
     >
       <div
         className={`w-full max-w-3xl flex flex-col items-center justify-center mb-24 transition-all duration-700 ${
           transitioning ? "opacity-0 translate-y-2" : "opacity-100 translate-y-0"
         }`}
       >
-        {isPlaying ? playing : center}
+        {isPlaying ? playing : (
+          <h1 className="text-2xl text-white/70 animate-fade-in">cri cri cri</h1>
+        )}
       </div>
 
       <div className="absolute bottom-10 flex flex-col items-center transition-all duration-700">
@@ -257,6 +268,21 @@ export default function SpotifyPage() {
         body {
           background-color: #000;
           font-family: "Josefin Sans", sans-serif;
+        }
+        .animate-fade-in {
+          opacity: 0;
+          transform: translateY(8px);
+          animation: fadeIn 0.8s ease forwards;
+        }
+        @keyframes fadeIn {
+          0% {
+            opacity: 0;
+            transform: translateY(8px);
+          }
+          100% {
+            opacity: 1;
+            transform: translateY(0);
+          }
         }
       `}</style>
     </main>
