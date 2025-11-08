@@ -90,12 +90,6 @@ export default function SpotifyPage() {
   const center = (
     <div className="flex flex-col items-center justify-center text-center">
       <h1 className="text-2xl text-white/70 mb-4">cri cri cri</h1>
-      <button
-        onClick={handleLogin}
-        className="px-5 py-2 border border-white/30 rounded-md text-white/90 hover:bg-white/10 transition-all"
-      >
-        Conectar ao Spotify
-      </button>
     </div>
   );
 
