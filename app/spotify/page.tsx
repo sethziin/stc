@@ -27,7 +27,7 @@ export default function SpotifyPage() {
   const [textColor, setTextColor] = useState<string>("white");
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // 🔹 Extrai duas cores principais + define contraste automático
+  // 🔹 Extrai cores principais e decide cor de contraste do texto
   async function extractDominantGradient(
     url: string
   ): Promise<{ gradient: string; textColor: string }> {
@@ -81,7 +81,6 @@ export default function SpotifyPage() {
         const bright = `rgb(${r},${g},${b})`;
         const dark = `rgb(${r2},${g2},${b2})`;
 
-        // calcula luminância e escolhe a cor do texto
         const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
         const contrastText = luminance > 0.6 ? "black" : "white";
 
@@ -98,14 +97,23 @@ export default function SpotifyPage() {
     });
   }
 
-  // 🔹 Atualiza o estado da faixa atual
+  // 🔹 Atualiza estado da faixa (e calcula gradiente inicial)
   useEffect(() => {
     async function fetchNow() {
       try {
         const r = await fetch("/api/spotify/now-playing", { cache: "no-store" });
         const j: NowPlaying = await r.json();
 
+        // 🎵 primeira vez: define gradiente inicial
+        if (!lastTrackId && j.album?.image) {
+          extractDominantGradient(j.album.image).then((res) => {
+            setBgGradient(res.gradient);
+            setTextColor(res.textColor);
+          });
+        }
+
         if (lastTrackId && j.track?.id && j.track.id !== lastTrackId) {
+          // troca de faixa → animação e gradiente novo
           setTransitioning(true);
           setTimeout(() => {
             setLyrics([]);
@@ -136,7 +144,7 @@ export default function SpotifyPage() {
     return () => clearInterval(id);
   }, [lastTrackId]);
 
-  // 🔹 Carrega letra
+  // 🔹 Carrega letra sincronizada
   useEffect(() => {
     async function loadLyrics() {
       if (!now?.isPlaying || !now.track?.name) {
@@ -155,10 +163,9 @@ export default function SpotifyPage() {
       if (now.durationMs) params.set("durationMs", String(now.durationMs));
 
       try {
-        const r = await fetch(
-          `/api/spotify/lyrics?${params.toString()}`,
-          { cache: "no-store" }
-        );
+        const r = await fetch(`/api/spotify/lyrics?${params.toString()}`, {
+          cache: "no-store",
+        });
         const j = await r.json();
         setLyrics(j.lyrics || []);
         setActiveIdx(-1);
@@ -173,7 +180,7 @@ export default function SpotifyPage() {
     if (now?.track?.id) loadLyrics();
   }, [now?.track?.id]);
 
-  // 🔹 Sincroniza letra com tempo
+  // 🔹 Sincroniza letra em tempo real
   useEffect(() => {
     if (!now?.isPlaying || !lyrics.length) {
       if (timerRef.current) clearInterval(timerRef.current);
