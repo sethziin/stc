@@ -14,7 +14,7 @@ export default function NotFound() {
 
   return (
     <main className="flex items-center justify-center min-h-screen">
-      <h1 className="glitch-text">404 — nothing here.</h1>
+      <h1 className="glitch-text">nada</h1>
       <audio ref={audioRef} src="/sound/ambient.mp3" loop />
     </main>
   )

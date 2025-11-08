@@ -1,37 +1,67 @@
 import { NextResponse } from "next/server";
-import ColorThief from "colorthief";
-import { getNowPlaying } from "../utils";
+
+const {
+  SPOTIFY_CLIENT_ID,
+  SPOTIFY_CLIENT_SECRET,
+  SPOTIFY_REFRESH_TOKEN,
+} = process.env;
+
+async function getAccessToken() {
+  const basic = Buffer.from(`${SPOTIFY_CLIENT_ID}:${SPOTIFY_CLIENT_SECRET}`).toString("base64");
+
+  const res = await fetch("https://accounts.spotify.com/api/token", {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${basic}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({
+      grant_type: "refresh_token",
+      refresh_token: SPOTIFY_REFRESH_TOKEN!,
+    }),
+  });
+
+  const data = await res.json();
+  return data.access_token;
+}
 
 export async function GET() {
   try {
-    const np = await getNowPlaying();
-    if (!np?.isPlaying) return NextResponse.json({ isPlaying: false });
+    const access_token = await getAccessToken();
 
-    const albumImage = np.album?.image;
-    let colors = ["#000", "#111"];
-    let isDark = true;
+    const now = await fetch("https://api.spotify.com/v1/me/player/currently-playing", {
+      headers: {
+        Authorization: `Bearer ${access_token}`,
+      },
+      next: { revalidate: 0 },
+    });
 
-    if (albumImage) {
-      try {
-        const imageBuffer = await fetch(albumImage).then((r) => r.arrayBuffer());
-        const dominant = await ColorThief.getPalette(Buffer.from(imageBuffer), 2);
-        colors = dominant.map((c) => `rgb(${c[0]},${c[1]},${c[2]})`);
-        // luminosidade média → define se o fundo é claro ou escuro
-        const avgLuma =
-          (0.299 * dominant[0][0] + 0.587 * dominant[0][1] + 0.114 * dominant[0][2]) / 255;
-        isDark = avgLuma < 0.5;
-      } catch (err) {
-        console.warn("falha ao extrair cores", err);
-      }
-    }
+    // 204 = nada tocando
+    if (now.status === 204) return NextResponse.json({ isPlaying: false });
+
+    const json = await now.json();
+
+    if (!json || !json.item) return NextResponse.json({ isPlaying: false });
+
+    const artists = json.item.artists?.map((a: any) => a.name) || [];
 
     return NextResponse.json({
-      ...np,
-      colors,
-      isDark,
+      isPlaying: json.is_playing,
+      progressMs: json.progress_ms,
+      durationMs: json.item.duration_ms,
+      track: {
+        id: json.item.id,
+        name: json.item.name,
+        uri: json.item.uri,
+      },
+      artists,
+      album: {
+        name: json.item.album.name,
+        image: json.item.album.images?.[0]?.url ?? null,
+      },
     });
-  } catch (e) {
-    console.error(e);
+  } catch (err) {
+    console.error("Erro no now-playing:", err);
     return NextResponse.json({ isPlaying: false });
   }
 }
