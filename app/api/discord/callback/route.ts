@@ -47,19 +47,21 @@ async function fetchMe(accessToken: string): Promise<Me> {
 
 function flagsToBadges(flags = 0) {
   const list: { key: string; label: string }[] = [];
-  // Mapeamento mínimo (expanda se quiser mais):
-  // https://discord.com/developers/docs/resources/user#user-object-user-flags
-  const enumMap: Record<number, { key: string; label: string }> = {
-    1 << 0: { key: "staff", label: "Discord Staff" },
-    1 << 1: { key: "partner", label: "Partner" },
-    1 << 3: { key: "bug1", label: "Bug Hunter" },
-    1 << 14: { key: "early", label: "Early Supporter" },
-    1 << 17: { key: "active_dev", label: "Active Developer" },
-  };
-  for (const bit in enumMap) {
-    const mask = Number(bit);
-    if ((flags & mask) === mask) list.push(enumMap[mask]);
+
+  const map = [
+    { bit: 1 << 0, key: "staff", label: "Discord Staff" },
+    { bit: 1 << 1, key: "partner", label: "Partner" },
+    { bit: 1 << 3, key: "bug1", label: "Bug Hunter" },
+    { bit: 1 << 14, key: "early", label: "Early Supporter" },
+    { bit: 1 << 17, key: "active_dev", label: "Active Developer" },
+  ];
+
+  for (const entry of map) {
+    if ((flags & entry.bit) === entry.bit) {
+      list.push({ key: entry.key, label: entry.label });
+    }
   }
+
   return list;
 }
 
