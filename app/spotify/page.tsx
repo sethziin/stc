@@ -21,11 +21,11 @@ export default function SpotifyPage() {
   const [loadingLyrics, setLoadingLyrics] = useState<boolean>(false);
   const [lastTrackId, setLastTrackId] = useState<string | null>(null);
   const [transitioning, setTransitioning] = useState<boolean>(false);
-  const [bgColors, setBgColors] = useState<[string, string]>(["#000000", "#000000"]);
+  const [colors, setColors] = useState<[string, string]>(["#000", "#111"]);
   const [textColor, setTextColor] = useState<string>("white");
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // 🔹 Extrai cores e decide contraste
+  // 🎨 Extrai cores dominantes
   async function extractDominantColors(
     url: string
   ): Promise<{ colors: [string, string]; textColor: string }> {
@@ -37,73 +37,72 @@ export default function SpotifyPage() {
         const canvas = document.createElement("canvas");
         const ctx = canvas.getContext("2d");
         if (!ctx)
-          return resolve({ colors: ["#000", "#000"], textColor: "white" });
-
+          return resolve({ colors: ["#000", "#111"], textColor: "white" });
         canvas.width = img.width;
         canvas.height = img.height;
-        ctx.drawImage(img, 0, 0, img.width, img.height);
+        ctx.drawImage(img, 0, 0);
         const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
 
-        let r = 0, g = 0, b = 0, r2 = 0, g2 = 0, b2 = 0, count = 0;
+        let r = 0,
+          g = 0,
+          b = 0,
+          r2 = 0,
+          g2 = 0,
+          b2 = 0,
+          count = 0;
+
         for (let i = 0; i < data.length; i += 4) {
           const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
           if (avg > 128) {
-            r += data[i]; g += data[i + 1]; b += data[i + 2];
+            r += data[i];
+            g += data[i + 1];
+            b += data[i + 2];
           } else {
-            r2 += data[i]; g2 += data[i + 1]; b2 += data[i + 2];
+            r2 += data[i];
+            g2 += data[i + 1];
+            b2 += data[i + 2];
           }
           count++;
         }
 
-        r = Math.floor(r / count);
-        g = Math.floor(g / count);
-        b = Math.floor(b / count);
-        r2 = Math.floor(r2 / count);
-        g2 = Math.floor(g2 / count);
-        b2 = Math.floor(b2 / count);
+        const c1 = `hsl(${(r / count) * 0.7}, 80%, 60%)`;
+        const c2 = `hsl(${(r2 / count) * 0.9}, 70%, 40%)`;
 
-        const c1 = `rgb(${r},${g},${b})`;
-        const c2 = `rgb(${r2},${g2},${b2})`;
+        const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+        const txt = lum > 0.6 ? "black" : "white";
 
-        const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-        const textColor = luminance > 0.6 ? "black" : "white";
-
-        resolve({ colors: [c1, c2], textColor });
+        resolve({ colors: [c1, c2], textColor: txt });
       };
-      img.onerror = () => resolve({ colors: ["#000", "#000"], textColor: "white" });
+      img.onerror = () => resolve({ colors: ["#000", "#111"], textColor: "white" });
     });
   }
 
-  // 🔹 Atualiza faixa e cores
+  // Atualiza música e cores
   useEffect(() => {
     async function fetchNow() {
       try {
-        const r = await fetch("/api/spotify/now-playing", { cache: "no-store" });
-        const j: NowPlaying = await r.json();
+        const res = await fetch("/api/spotify/now-playing", { cache: "no-store" });
+        const j: NowPlaying = await res.json();
 
-        // inicializa cores na primeira vez
         if (!lastTrackId && j.album?.image) {
           extractDominantColors(j.album.image).then((res) => {
-            setBgColors(res.colors);
+            setColors(res.colors);
             setTextColor(res.textColor);
           });
         }
 
-        // troca de faixa → recalcula cores
         if (lastTrackId && j.track?.id && j.track.id !== lastTrackId) {
           setTransitioning(true);
           setTimeout(() => {
             setLyrics([]);
             setActiveIdx(-1);
-            setLoadingLyrics(true);
             setNow(j);
             setLastTrackId(j.track?.id ?? null);
             setTransitioning(false);
           }, 400);
-
           if (j.album?.image) {
             extractDominantColors(j.album.image).then((res) => {
-              setBgColors(res.colors);
+              setColors(res.colors);
               setTextColor(res.textColor);
             });
           }
@@ -121,7 +120,7 @@ export default function SpotifyPage() {
     return () => clearInterval(id);
   }, [lastTrackId]);
 
-  // 🔹 Carrega letra
+  // Letras
   useEffect(() => {
     async function loadLyrics() {
       if (!now?.isPlaying || !now.track?.name) {
@@ -129,37 +128,29 @@ export default function SpotifyPage() {
       }
       setLoadingLyrics(true);
       if (timerRef.current) clearInterval(timerRef.current);
-
       const params = new URLSearchParams({
         track: now.track.name,
         artist: (now.artists || []).join(", "),
       });
       if (now.durationMs) params.set("durationMs", String(now.durationMs));
-
       try {
-        const r = await fetch(`/api/spotify/lyrics?${params.toString()}`, { cache: "no-store" });
+        const r = await fetch(`/api/spotify/lyrics?${params}`, { cache: "no-store" });
         const j = await r.json();
         setLyrics(j.lyrics || []);
         setActiveIdx(-1);
-      } catch (e) {
-        console.error("Erro ao carregar letra:", e);
-        setLyrics([]);
-      } finally {
-        setLoadingLyrics(false);
-      }
+      } catch { setLyrics([]); }
+      finally { setLoadingLyrics(false); }
     }
-
     if (now?.track?.id) loadLyrics();
   }, [now?.track?.id]);
 
-  // 🔹 Sincroniza letra
+  // Sincroniza letras
   useEffect(() => {
     if (!now?.isPlaying || !lyrics.length) {
       if (timerRef.current) clearInterval(timerRef.current);
       setActiveIdx(-1);
       return;
     }
-
     if (timerRef.current) clearInterval(timerRef.current);
     timerRef.current = setInterval(() => {
       const t = now.progressMs ?? 0;
@@ -170,104 +161,66 @@ export default function SpotifyPage() {
       }
       setActiveIdx(idx);
     }, 500);
-
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [now?.isPlaying, now?.progressMs, lyrics]);
 
   const isPlaying = now?.isPlaying && now?.track?.name;
 
-  const playing = (
-    <div
-      key={now?.track?.id}
-      className={`flex flex-col items-center justify-center text-center transition-all duration-700 ${
-        transitioning ? "opacity-0 translate-y-2" : "opacity-100 translate-y-0"
-      }`}
-      style={{ color: textColor }}
-    >
-      <div className="flex items-center justify-center gap-4 mb-10">
-        {now?.album?.image ? (
-          <img
-            src={now.album.image}
-            alt="album"
-            className={`w-28 h-28 rounded-2xl object-cover shadow-xl transition-all duration-700 ${
-              transitioning ? "scale-95 opacity-0" : "scale-100 opacity-100"
-            }`}
-          />
-        ) : (
-          <div className="w-28 h-28 bg-white/5 rounded-xl" />
-        )}
-        <div className="text-left">
-          <div
-            className={`text-2xl font-semibold transition-all duration-700 ${
-              transitioning ? "opacity-0 translate-y-2" : "opacity-100"
-            }`}
-          >
-            {now?.track?.name || "—"}
-          </div>
-          <div className="text-sm opacity-70 mt-1">
-            {(now?.artists || []).join(", ") || "—"}
-          </div>
-        </div>
-      </div>
-
-      {loadingLyrics ? (
-        <p className="italic animate-pulse opacity-70">Carregando letra...</p>
-      ) : !lyrics.length ? (
-        <p className="italic opacity-50">Sem letra sincronizada para esta faixa.</p>
-      ) : (
-        <div className="h-[40vh] flex items-center justify-center">
-          {activeIdx >= 0 && lyrics[activeIdx] ? (
-            <h2
-              key={lyrics[activeIdx].timeMs}
-              className="text-3xl font-medium tracking-wide animate-fade-lyric"
-              style={{
-                fontFamily: "Josefin Sans, sans-serif",
-                maxWidth: "80%",
-                lineHeight: "1.6",
-              }}
-            >
-              {lyrics[activeIdx].line}
-            </h2>
-          ) : (
-            <h2 className="text-xl opacity-40 italic">...</h2>
-          )}
-        </div>
-      )}
-
-      <style jsx>{`
-        .animate-fade-lyric {
-          opacity: 0;
-          transform: translateY(10px);
-          animation: fadeInLyric 0.8s ease forwards;
-        }
-        @keyframes fadeInLyric {
-          0% { opacity: 0; transform: translateY(10px); }
-          100% { opacity: 1; transform: translateY(0); }
-        }
-      `}</style>
-    </div>
-  );
-
   return (
     <main className="relative min-h-screen flex flex-col items-center justify-center p-6 select-none overflow-hidden">
-      {/* 🔥 lava lamp background */}
+      {/* 🔥 Lava lamp blob */}
       <div
-        className="absolute inset-0 -z-10 animate-lava"
+        className="absolute inset-0 flex justify-center items-center -z-10"
         style={{
-          background: `radial-gradient(circle at 20% 20%, ${bgColors[0]}, ${bgColors[1]})`,
-          backgroundSize: "200% 200%",
-          filter: "blur(80px) brightness(0.8)",
-          transition: "background 1s ease",
+          backgroundColor: "#000",
+          overflow: "hidden",
         }}
-      />
-      
+      >
+        <div
+          className="blob"
+          style={{
+            backgroundImage: `linear-gradient(135deg, ${colors[0]}, ${colors[1]})`,
+          }}
+        ></div>
+      </div>
+
       <div
-        className={`w-full max-w-3xl flex flex-col items-center justify-center mb-24 transition-all duration-700 ${
+        className={`w-full max-w-3xl flex flex-col items-center justify-center mb-24 text-center transition-all duration-700 ${
           transitioning ? "opacity-0 translate-y-2" : "opacity-100 translate-y-0"
         }`}
         style={{ color: textColor }}
       >
-        {isPlaying ? playing : <h1 className="text-2xl opacity-70 animate-fade-in">cri cri cri</h1>}
+        {isPlaying ? (
+          <>
+            {now?.album?.image && (
+              <img
+                src={now.album.image}
+                alt="album"
+                className="w-28 h-28 rounded-2xl mb-6 shadow-xl object-cover"
+              />
+            )}
+            <h1 className="text-2xl font-bold">{now?.track?.name}</h1>
+            <p className="text-sm opacity-80 mt-1">
+              {(now?.artists || []).join(", ")}
+            </p>
+            {loadingLyrics ? (
+              <p className="italic mt-10 opacity-60">Carregando letra...</p>
+            ) : lyrics.length ? (
+              <h2
+                key={lyrics[activeIdx]?.timeMs}
+                className="text-3xl mt-16 animate-fade-lyric"
+              >
+                {lyrics[activeIdx]?.line || "..."}
+              </h2>
+            ) : (
+              <p className="italic mt-16 opacity-60">
+                Sem letra sincronizada
+              </p>
+            )}
+          </>
+        ) : (
+          <h1 className="text-2xl opacity-70 animate-fade-in">cri cri cri</h1>
+        )}
       </div>
 
       <div className="absolute bottom-10 flex flex-col items-center transition-all duration-700">
@@ -275,26 +228,30 @@ export default function SpotifyPage() {
       </div>
 
       <style jsx global>{`
-        @keyframes lavaMove {
-          0% { background-position: 0% 50%; }
-          50% { background-position: 100% 50%; }
-          100% { background-position: 0% 50%; }
+        .blob {
+          --size: 900px;
+          width: var(--size);
+          height: var(--size);
+          filter: blur(calc(var(--size) / 5));
+          border-radius: 30% 70% 70% 30% / 30% 30% 70% 70%;
+          animation: rotate 60s cubic-bezier(0.8, 0.2, 0.2, 0.8) infinite alternate;
         }
-        .animate-lava {
-          animation: lavaMove 15s ease infinite;
+        @keyframes rotate {
+          0% {
+            transform: rotate(0deg) scale(1);
+          }
+          100% {
+            transform: rotate(360deg) scale(1.1);
+          }
         }
-        body {
-          background: #000;
-          font-family: "Josefin Sans", sans-serif;
-        }
-        .animate-fade-in {
+        .animate-fade-lyric {
           opacity: 0;
-          transform: translateY(8px);
-          animation: fadeIn 0.8s ease forwards;
+          transform: translateY(10px);
+          animation: fadeInLyric 0.8s ease forwards;
         }
-        @keyframes fadeIn {
-          0% { opacity: 0; transform: translateY(8px); }
-          100% { opacity: 1; transform: translateY(0); }
+        @keyframes fadeInLyric {
+          from { opacity: 0; transform: translateY(10px); }
+          to { opacity: 1; transform: translateY(0); }
         }
       `}</style>
     </main>
