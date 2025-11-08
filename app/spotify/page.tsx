@@ -1,7 +1,7 @@
 "use client";
 
-import DiscordCard from "./DiscordCard";
 import { useEffect, useRef, useState } from "react";
+import DiscordCard from "./DiscordCard";
 
 type NowPlaying = {
   isPlaying: boolean;
@@ -18,36 +18,47 @@ export default function SpotifyPage() {
   const [now, setNow] = useState<NowPlaying | null>(null);
   const [lyrics, setLyrics] = useState<LyricLine[]>([]);
   const [activeIdx, setActiveIdx] = useState<number>(-1);
+  const [loadingLyrics, setLoadingLyrics] = useState<boolean>(false);
+  const [lastTrackId, setLastTrackId] = useState<string | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // busca a música atual
+  // Atualiza o estado da faixa atual (polling)
   useEffect(() => {
     async function fetchNow() {
       try {
         const r = await fetch("/api/spotify/now-playing", { cache: "no-store" });
         const j: NowPlaying = await r.json();
+
+        // Detecta mudança de faixa antes do próximo ciclo
+        if (lastTrackId && j.track?.id && j.track.id !== lastTrackId) {
+          setLyrics([]);
+          setActiveIdx(-1);
+          setLoadingLyrics(true);
+        }
+
         setNow(j);
+        setLastTrackId(j.track?.id ?? null);
       } catch {
         setNow({ isPlaying: false });
       }
     }
+
     fetchNow();
     const id = setInterval(fetchNow, 2000);
     return () => clearInterval(id);
-  }, []);
+  }, [lastTrackId]);
 
-  // carrega letras sincronizadas
+  // Carrega letra sincronizada
   useEffect(() => {
     async function loadLyrics() {
-      // limpa o timer antigo imediatamente
+      if (!now?.isPlaying || !now.track?.name) {
+        setLyrics([]);
+        setActiveIdx(-1);
+        return;
+      }
+
+      setLoadingLyrics(true);
       if (timerRef.current) clearInterval(timerRef.current);
-      setActiveIdx(-1);
-      setLyrics([]);
-
-      if (!now?.isPlaying || !now.track?.name) return;
-
-      // pequeno delay opcional para evitar race condition
-      await new Promise((r) => setTimeout(r, 100));
 
       const params = new URLSearchParams({
         track: now.track.name,
@@ -56,25 +67,23 @@ export default function SpotifyPage() {
       if (now.durationMs) params.set("durationMs", String(now.durationMs));
 
       try {
-        const r = await fetch(`/api/spotify/lyrics?${params.toString()}`, {
-          cache: "no-store",
-        });
+        const r = await fetch(`/api/spotify/lyrics?${params.toString()}`, { cache: "no-store" });
         const j = await r.json();
         setLyrics(j.lyrics || []);
         setActiveIdx(-1);
       } catch (e) {
         console.error("Erro ao carregar letra:", e);
         setLyrics([]);
+      } finally {
+        setLoadingLyrics(false);
       }
     }
 
-    // detecta troca de faixa (id ou nome diferentes)
-    if (now?.track?.id || now?.track?.name) {
-      loadLyrics();
-    }
-  }, [now?.track?.id, now?.track?.name]);
+    // só carrega se a faixa for diferente da anterior
+    if (now?.track?.id) loadLyrics();
+  }, [now?.track?.id]);
 
-  // sincroniza tempo da letra com progresso da música
+  // Sincroniza tempo da letra com progresso
   useEffect(() => {
     if (!now?.isPlaying || !lyrics.length) {
       if (timerRef.current) clearInterval(timerRef.current);
@@ -98,12 +107,14 @@ export default function SpotifyPage() {
     };
   }, [now?.isPlaying, now?.progressMs, lyrics]);
 
+  // layout quando nada toca
   const center = (
     <div className="flex flex-col items-center justify-center text-center">
       <h1 className="text-2xl text-white/70 mb-4">cri cri cri</h1>
     </div>
   );
 
+  // layout quando tocando
   const playing = (
     <div className="flex flex-col items-center justify-center text-center">
       <div className="flex items-center justify-center gap-4 mb-10">
@@ -126,7 +137,9 @@ export default function SpotifyPage() {
         </div>
       </div>
 
-      {!lyrics.length ? (
+      {loadingLyrics ? (
+        <p className="text-white/50 italic animate-pulse">Carregando letra...</p>
+      ) : !lyrics.length ? (
         <p className="text-white/50 italic">Sem letra sincronizada para esta faixa.</p>
       ) : (
         <div className="h-[40vh] flex items-center justify-center">
@@ -176,12 +189,12 @@ export default function SpotifyPage() {
 
   return (
     <main className="relative min-h-screen bg-black text-white flex flex-col items-center justify-center p-6 select-none">
-      {/* player do spotify */}
+      {/* player */}
       <div className="w-full max-w-3xl flex flex-col items-center justify-center mb-24">
         {isPlaying ? playing : center}
       </div>
 
-      {/* card do discord fixado na parte inferior */}
+      {/* card do Discord fixado na parte inferior */}
       <div className="absolute bottom-10 flex flex-col items-center">
         <DiscordCard />
       </div>
