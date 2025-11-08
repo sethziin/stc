@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import ColorThief from "colorthief";
-import { getNowPlaying } from "../spotify";
+import { getNowPlaying } from "../utils";
 
 export async function GET() {
   try {
