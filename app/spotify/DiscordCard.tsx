@@ -1,13 +1,12 @@
 "use client";
 import { useEffect, useState } from "react";
 
-type Me = {
+type PublicUser = {
   id: string;
   username: string;
   global_name?: string;
   avatarUrl?: string | null;
   badges: { key: string; label: string }[];
-  premium_type: number;
 };
 
 type LanyardPresence = {
@@ -20,53 +19,55 @@ type LanyardPresence = {
 };
 
 export default function DiscordCard() {
-  const [me, setMe] = useState<Me | null>(null);
+  const [user, setUser] = useState<PublicUser | null>(null);
   const [presence, setPresence] = useState<LanyardPresence | null>(null);
-  const [connected, setConnected] = useState(false);
 
-  // Busca perfil do OAuth (/api/discord/me)
+  const USER_ID = "789331231888244736"; // seu id fixo
+
+  // Fetch estático do seu perfil público
   useEffect(() => {
     (async () => {
       try {
-        const r = await fetch("/api/discord/me", { cache: "no-store" });
-        if (r.ok) setMe(await r.json());
-        else console.error("Erro /me:", await r.text());
+        const r = await fetch(`https://discordlookup.mesavirep.xyz/v1/user/${USER_ID}`);
+        if (!r.ok) throw new Error("Falha ao buscar perfil público.");
+        const data = await r.json();
+
+        // badges extras (limitadas via API pública)
+        const badges: { key: string; label: string }[] = [];
+        if (data.public_flags_array.includes("Hypesquad Bravery")) badges.push({ key: "bravery", label: "HypeSquad Bravery" });
+        if (data.public_flags_array.includes("Hypesquad Brilliance")) badges.push({ key: "brilliance", label: "HypeSquad Brilliance" });
+        if (data.public_flags_array.includes("Hypesquad Balance")) badges.push({ key: "balance", label: "HypeSquad Balance" });
+        if (data.public_flags_array.includes("Partner")) badges.push({ key: "partner", label: "Partner" });
+        if (data.public_flags_array.includes("Bug Hunter Level 1")) badges.push({ key: "bug1", label: "Bug Hunter" });
+        if (data.public_flags_array.includes("Active Developer")) badges.push({ key: "active_dev", label: "Active Developer" });
+
+        setUser({
+          id: data.id,
+          username: data.username,
+          global_name: data.global_name,
+          avatarUrl: data.avatar,
+          badges,
+        });
       } catch (e) {
         console.error(e);
       }
     })();
   }, []);
 
-  // Conecta ao Lanyard WebSocket
+  // Conexão Lanyard realtime
   useEffect(() => {
-    const USER_ID = process.env.NEXT_PUBLIC_DISCORD_ID || "789331231888244736";
     const ws = new WebSocket("wss://api.lanyard.rest/socket");
-
     ws.onopen = () => {
       ws.send(JSON.stringify({ op: 2, d: { subscribe_to_id: USER_ID } }));
-      setConnected(true);
     };
-
-    ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      if (data.t === "INIT_STATE" || data.t === "PRESENCE_UPDATE") {
-        setPresence(data.d);
-      }
+    ws.onmessage = (e) => {
+      const msg = JSON.parse(e.data);
+      if (msg.t === "INIT_STATE" || msg.t === "PRESENCE_UPDATE") setPresence(msg.d);
     };
-
-    ws.onclose = () => {
-      setConnected(false);
-      setTimeout(() => {
-        const reconnect = new WebSocket("wss://api.lanyard.rest/socket");
-        reconnect.onopen = ws.onopen;
-        reconnect.onmessage = ws.onmessage;
-      }, 3000);
-    };
-
     return () => ws.close();
   }, []);
 
-  if (!me) return null;
+  if (!user) return null;
 
   const status = presence?.discord_status || "offline";
   const song = presence?.spotify?.song;
@@ -83,22 +84,17 @@ export default function DiscordCard() {
       : "bg-gray-500";
 
   const badgeIcons: Record<string, string> = {
-    staff: "/badges/staff.png",
     partner: "/badges/partner.png",
     bravery: "/badges/hypesquad-bravery.png",
     brilliance: "/badges/hypesquad-brilliance.png",
     balance: "/badges/hypesquad-balance.png",
-    nitro: "/badges/nitro.png",
     bug1: "/badges/bug-hunter.png",
-    bug2: "/badges/bug-hunter-gold.png",
-    early: "/badges/early-supporter.png",
-    vbd: "/badges/verified-bot-dev.png",
     active_dev: "/badges/active-dev.png",
   };
 
   return (
     <a
-      href={`https://discord.com/users/${me.id}`}
+      href={`https://discord.com/users/${USER_ID}`}
       target="_blank"
       rel="noopener noreferrer"
       className="flex items-center justify-between w-[540px] h-[96px] rounded-3xl px-5 py-3 border border-white/10 shadow-[0_0_40px_rgba(0,0,0,0.35)] bg-[radial-gradient(120%_120%_at_0%_0%,rgba(255,255,255,0.05),rgba(0,0,0,0.1)_80%)] backdrop-blur-md hover:bg-white/10 transition-all"
@@ -107,7 +103,7 @@ export default function DiscordCard() {
       <div className="flex items-center gap-4">
         <div className="relative">
           <img
-            src={me.avatarUrl ?? "/discord-avatar-fallback.png"}
+            src={user.avatarUrl ?? "/discord-avatar-fallback.png"}
             alt="avatar"
             className="w-14 h-14 rounded-full object-cover border border-white/10"
           />
@@ -119,9 +115,9 @@ export default function DiscordCard() {
         <div className="leading-tight">
           <div className="flex items-center gap-1">
             <span className="text-white font-semibold text-base">
-              {me.global_name || me.username}
+              {user.global_name || user.username}
             </span>
-            {me.badges.map((b) =>
+            {user.badges.map((b) =>
               badgeIcons[b.key] ? (
                 <img
                   key={b.key}
@@ -148,8 +144,7 @@ export default function DiscordCard() {
         </div>
       </div>
 
-      {/* Right side — only show when listening */}
-      {albumArt && song ? (
+      {song && albumArt ? (
         <img
           src={albumArt}
           alt="album"
