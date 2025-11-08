@@ -10,21 +10,16 @@ type Me = {
   premium_type: number;
 };
 
-type LanyardPresence = {
-  discord_status: "online" | "idle" | "dnd" | "offline";
-  spotify?: {
-    song: string;
-    artist: string;
-    album_art_url: string;
-  };
+type Lanyard = {
+  discord_status?: "online" | "idle" | "dnd" | "offline";
+  spotify?: { song: string; artist: string; album_art_url: string };
 };
 
 export default function DiscordCard() {
   const [me, setMe] = useState<Me | null>(null);
-  const [presence, setPresence] = useState<LanyardPresence | null>(null);
-  const [connected, setConnected] = useState(false);
+  const [lanyard, setLanyard] = useState<Lanyard | null>(null);
 
-  // Busca perfil do OAuth (/api/discord/me)
+  // --- Fetch OAuth profile ---
   useEffect(() => {
     (async () => {
       try {
@@ -37,30 +32,20 @@ export default function DiscordCard() {
     })();
   }, []);
 
-  // Conecta ao Lanyard WebSocket
+  // --- Live presence via Lanyard ---
   useEffect(() => {
     const USER_ID = process.env.NEXT_PUBLIC_DISCORD_ID || "789331231888244736";
     const ws = new WebSocket("wss://api.lanyard.rest/socket");
 
     ws.onopen = () => {
       ws.send(JSON.stringify({ op: 2, d: { subscribe_to_id: USER_ID } }));
-      setConnected(true);
     };
 
-    ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      if (data.t === "INIT_STATE" || data.t === "PRESENCE_UPDATE") {
-        setPresence(data.d);
+    ws.onmessage = (ev) => {
+      const msg = JSON.parse(ev.data);
+      if (msg.t === "INIT_STATE" || msg.t === "PRESENCE_UPDATE") {
+        setLanyard(msg.d);
       }
-    };
-
-    ws.onclose = () => {
-      setConnected(false);
-      setTimeout(() => {
-        const reconnect = new WebSocket("wss://api.lanyard.rest/socket");
-        reconnect.onopen = ws.onopen;
-        reconnect.onmessage = ws.onmessage;
-      }, 3000);
     };
 
     return () => ws.close();
@@ -68,10 +53,10 @@ export default function DiscordCard() {
 
   if (!me) return null;
 
-  const status = presence?.discord_status || "offline";
-  const song = presence?.spotify?.song;
-  const artist = presence?.spotify?.artist;
-  const albumArt = presence?.spotify?.album_art_url;
+  const status = lanyard?.discord_status || "offline";
+  const song = lanyard?.spotify?.song;
+  const artist = lanyard?.spotify?.artist;
+  const albumArt = lanyard?.spotify?.album_art_url;
 
   const statusColor =
     status === "online"
@@ -82,6 +67,7 @@ export default function DiscordCard() {
       ? "bg-red-500"
       : "bg-gray-500";
 
+  // --- Map icons to local images ---
   const badgeIcons: Record<string, string> = {
     staff: "/badges/staff.png",
     partner: "/badges/partner.png",
@@ -101,9 +87,9 @@ export default function DiscordCard() {
       href={`https://discord.com/users/${me.id}`}
       target="_blank"
       rel="noopener noreferrer"
-      className="flex items-center justify-between w-[540px] h-[96px] rounded-3xl px-5 py-3 border border-white/10 shadow-[0_0_40px_rgba(0,0,0,0.35)] bg-[radial-gradient(120%_120%_at_0%_0%,rgba(255,255,255,0.05),rgba(0,0,0,0.1)_80%)] backdrop-blur-md hover:bg-white/10 transition-all"
+      className="flex items-center justify-between w-[540px] h-[96px] rounded-3xl px-5 py-3 border border-white/10 shadow-[0_0_40px_rgba(0,0,0,0.35)] bg-[radial-gradient(120%_120%_at_0%_0%,rgba(255,255,255,0.05),rgba(0,0,0,0.1)_80%)] backdrop-blur-md hover:bg-white/10 transition"
     >
-      {/* Left side */}
+      {/* Left Side */}
       <div className="flex items-center gap-4">
         <div className="relative">
           <img
@@ -121,6 +107,7 @@ export default function DiscordCard() {
             <span className="text-white font-semibold text-base">
               {me.global_name || me.username}
             </span>
+            {/* badges */}
             {me.badges.map((b) =>
               badgeIcons[b.key] ? (
                 <img
@@ -134,12 +121,8 @@ export default function DiscordCard() {
           </div>
 
           {song ? (
-            <div
-              key={song}
-              className="text-white/80 text-sm transition-opacity duration-500 opacity-0 animate-fade-in"
-            >
-              Listening to{" "}
-              <span className="text-white font-medium">{song}</span>
+            <div className="text-white/80 text-sm">
+              Listening to <span className="text-white font-medium">{song}</span>
               <div className="text-white/60 text-xs">by {artist}</div>
             </div>
           ) : (
@@ -148,31 +131,14 @@ export default function DiscordCard() {
         </div>
       </div>
 
-      {/* Right side — only show when listening */}
+      {/* Right (mostra somente se estiver ouvindo algo) */}
       {albumArt && song ? (
         <img
           src={albumArt}
           alt="album"
-          className="w-14 h-14 rounded-xl object-cover shadow-md transition-opacity duration-500 opacity-0 data-[active=true]:opacity-100"
-          data-active={!!song}
+          className="w-14 h-14 rounded-xl object-cover shadow-md transition-all duration-500"
         />
       ) : null}
-
-      <style jsx>{`
-        @keyframes fade-in {
-          0% {
-            opacity: 0;
-            transform: translateY(6px);
-          }
-          100% {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-        .animate-fade-in {
-          animation: fade-in 0.6s ease forwards;
-        }
-      `}</style>
     </a>
   );
 }
