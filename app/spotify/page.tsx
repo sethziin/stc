@@ -28,7 +28,9 @@ export default function SpotifyPage() {
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   // 🔹 Extrai duas cores principais + define contraste automático
-  async function extractDominantGradient(url: string): Promise<{ gradient: string; textColor: string }> {
+  async function extractDominantGradient(
+    url: string
+  ): Promise<{ gradient: string; textColor: string }> {
     return new Promise((resolve) => {
       const img = document.createElement("img");
       img.crossOrigin = "Anonymous";
@@ -36,13 +38,25 @@ export default function SpotifyPage() {
       img.onload = () => {
         const canvas = document.createElement("canvas");
         const ctx = canvas.getContext("2d");
-        if (!ctx) return resolve({ gradient: "radial-gradient(circle, #000, #000)", textColor: "white" });
+        if (!ctx)
+          return resolve({
+            gradient: "radial-gradient(circle, #000, #000)",
+            textColor: "white",
+          });
+
         canvas.width = img.width;
         canvas.height = img.height;
         ctx.drawImage(img, 0, 0, img.width, img.height);
         const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
 
-        let r = 0, g = 0, b = 0, r2 = 0, g2 = 0, b2 = 0, count = 0;
+        let r = 0,
+          g = 0,
+          b = 0,
+          r2 = 0,
+          g2 = 0,
+          b2 = 0,
+          count = 0;
+
         for (let i = 0; i < data.length; i += 4) {
           const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
           if (avg > 128) {
@@ -67,7 +81,7 @@ export default function SpotifyPage() {
         const bright = `rgb(${r},${g},${b})`;
         const dark = `rgb(${r2},${g2},${b2})`;
 
-        // calcula o contraste usando a luminância relativa média
+        // calcula luminância e escolhe a cor do texto
         const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
         const contrastText = luminance > 0.6 ? "black" : "white";
 
@@ -76,7 +90,11 @@ export default function SpotifyPage() {
           textColor: contrastText,
         });
       };
-      img.onerror = () => resolve({ gradient: "radial-gradient(circle, #000, #000)", textColor: "white" });
+      img.onerror = () =>
+        resolve({
+          gradient: "radial-gradient(circle, #000, #000)",
+          textColor: "white",
+        });
     });
   }
 
@@ -94,7 +112,7 @@ export default function SpotifyPage() {
             setActiveIdx(-1);
             setLoadingLyrics(true);
             setNow(j);
-            setLastTrackId(j.track.id);
+            setLastTrackId(j.track?.id ?? null);
             setTransitioning(false);
           }, 400);
 
@@ -137,7 +155,10 @@ export default function SpotifyPage() {
       if (now.durationMs) params.set("durationMs", String(now.durationMs));
 
       try {
-        const r = await fetch(`/api/spotify/lyrics?${params.toString()}`, { cache: "no-store" });
+        const r = await fetch(
+          `/api/spotify/lyrics?${params.toString()}`,
+          { cache: "no-store" }
+        );
         const j = await r.json();
         setLyrics(j.lyrics || []);
         setActiveIdx(-1);
@@ -184,7 +205,7 @@ export default function SpotifyPage() {
       className={`flex flex-col items-center justify-center text-center transition-all duration-700 ${
         transitioning ? "opacity-0 translate-y-2" : "opacity-100 translate-y-0"
       }`}
-      style={{ color: textColor }}
+      style={{ color: textColor, transition: "color 0.8s ease" }}
     >
       <div className="flex items-center justify-center gap-4 mb-10">
         {now?.album?.image ? (
@@ -259,7 +280,11 @@ export default function SpotifyPage() {
   return (
     <main
       className="relative min-h-screen flex flex-col items-center justify-center p-6 select-none transition-all duration-1000"
-      style={{ background: bgGradient, color: textColor }}
+      style={{
+        background: bgGradient,
+        color: textColor,
+        transition: "background 1s ease, color 0.8s ease",
+      }}
     >
       <div
         className={`w-full max-w-3xl flex flex-col items-center justify-center mb-24 transition-all duration-700 ${
