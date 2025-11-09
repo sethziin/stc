@@ -30,6 +30,8 @@ export default function SpotifyPage() {
   const ytReadyResolveRef = useRef<(() => void) | null>(null);
   const lyricsTimerRef = useRef<NodeJS.Timeout | null>(null);
   const lastRealignRef = useRef<number>(0);
+  const commandQueueRef = useRef<{ fn: () => void }[]>([]); // fila de comandos pendentes
+  const playerReadyRef = useRef<boolean>(false);
 
   // volume persistente
   const [volume, setVolume] = useState<number>(() => {
@@ -75,6 +77,22 @@ export default function SpotifyPage() {
       };
       img.onerror = () => resolve({ colors: ["#0a0a0a", "#111"], textColor: "white" });
     });
+  }
+
+  // ---------- executa comandos apenas se o player estiver pronto ----------
+  function safeCommand(fn: () => void) {
+    if (playerReadyRef.current) fn();
+    else commandQueueRef.current.push({ fn });
+  }
+
+  // processa comandos pendentes
+  function flushCommandQueue() {
+    while (commandQueueRef.current.length) {
+      const cmd = commandQueueRef.current.shift();
+      try { cmd?.fn(); } catch (e) {
+        console.warn("[YOUTUBE] erro ao executar comando pendente:", e);
+      }
+    }
   }
 
   // ---------- Spotify polling ----------
@@ -152,26 +170,36 @@ export default function SpotifyPage() {
     return () => { if (lyricsTimerRef.current) clearInterval(lyricsTimerRef.current); };
   }, [now?.isPlaying, now?.progressMs, lyrics]);
 
-  // ---------- Reajuste com cooldown ----------
+  // ---------- Reajuste com cooldown + fila ----------
   function realignPlayer(force = false) {
-    const player = playerRef.current;
-    if (!player || typeof player.getCurrentTime !== "function") return;
+    safeCommand(() => {
+      const player = playerRef.current;
+      if (!player || typeof player.getCurrentTime !== "function") return;
 
-    const nowTs = Date.now();
-    if (!force && nowTs - lastRealignRef.current < 5000) return;
+      const nowTs = Date.now();
+      if (!force && nowTs - lastRealignRef.current < 5000) return;
 
-    const target = (now?.progressMs || 0) / 1000;
-    const current = player.getCurrentTime?.() || 0;
-    const drift = Math.abs(target - current);
+      try {
+        const target = (now?.progressMs || 0) / 1000;
+        const current = player.getCurrentTime?.() || 0;
+        const drift = Math.abs(target - current);
 
-    if (typeof player.seekTo === "function" && (drift > 2.0 || force)) {
-      console.log(`[YOUTUBE] realinhando (${drift.toFixed(2)}s)`);
-      player.seekTo(target, true);
-      lastRealignRef.current = nowTs;
-    }
+        if (typeof player.seekTo === "function" && (drift > 2.0 || force)) {
+          console.log(`[YOUTUBE] realinhando (${drift.toFixed(2)}s)`);
+          player.seekTo(target, true);
+          lastRealignRef.current = nowTs;
+        }
 
-    if (now?.isPlaying && typeof player.playVideo === "function") player.playVideo();
-    else if (!now?.isPlaying && typeof player.pauseVideo === "function") player.pauseVideo();
+        const state = player.getPlayerState?.();
+        if (now?.isPlaying && state !== 1 && typeof player.playVideo === "function") {
+          player.playVideo();
+        } else if (!now?.isPlaying && state === 1 && typeof player.pauseVideo === "function") {
+          player.pauseVideo();
+        }
+      } catch (err) {
+        console.warn("[YOUTUBE] tentativa de comando antes do player estar pronto:", err);
+      }
+    });
   }
 
   // ---------- Clique inicial ----------
@@ -197,8 +225,10 @@ export default function SpotifyPage() {
           events: {
             onReady: (ev: any) => {
               console.log("[YOUTUBE] player ready");
+              playerReadyRef.current = true;
               ev.target.setVolume(volume);
               ytReadyResolveRef.current?.();
+              flushCommandQueue();
             },
           },
         });
@@ -207,27 +237,30 @@ export default function SpotifyPage() {
 
     await ytReadyPromiseRef.current;
 
-    if (videoId && playerRef.current?.loadVideoById) {
-      playerRef.current.loadVideoById(videoId);
-      await new Promise((r) => setTimeout(r, 800));
-      realignPlayer(true);
+    if (videoId) {
+      safeCommand(() => {
+        playerRef.current.loadVideoById(videoId);
+        setTimeout(() => realignPlayer(true), 800);
+      });
     }
   }
 
-  // ---------- Sincroniza quando há eventos ----------
+  // ---------- Sincroniza eventos ----------
   useEffect(() => {
-    if (!unlocked || !playerRef.current || !videoId) return;
-    playerRef.current.loadVideoById(videoId);
-    setTimeout(() => realignPlayer(true), 1000);
+    if (!unlocked || !videoId) return;
+    safeCommand(() => {
+      playerRef.current.loadVideoById(videoId);
+      setTimeout(() => realignPlayer(true), 1000);
+    });
   }, [videoId]);
 
   useEffect(() => {
-    if (!unlocked || !playerRef.current) return;
+    if (!unlocked) return;
     realignPlayer(true);
   }, [now?.isPlaying]);
 
   useEffect(() => {
-    if (!unlocked || !playerRef.current) return;
+    if (!unlocked) return;
     realignPlayer();
   }, [now?.progressMs]);
 
