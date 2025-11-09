@@ -121,7 +121,7 @@ export default function SpotifyPage() {
           setLastTrackId(j.track?.id ?? null);
         }
 
-        // busca video
+        // busca vídeo correspondente
         if (j.track?.name && j.artists?.[0]) {
           const query = `${j.artists[0]} ${j.track.name}`;
           const y = await fetch(`/api/youtube/search?q=${encodeURIComponent(query)}`, { cache: "no-store" });
@@ -183,7 +183,7 @@ export default function SpotifyPage() {
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [now?.isPlaying, now?.progressMs, lyrics]);
 
-  // inicializa player do youtube
+  // inicializa player do youtube com origin fix
   const handleUnlock = () => {
     setUnlocked(true);
     if (window.YT) initPlayer();
@@ -197,14 +197,33 @@ export default function SpotifyPage() {
 
   function initPlayer() {
     if (playerRef.current) return;
+
+    const origin = window.location.origin;
+    console.log("[YouTube] Inicializando player com origin:", origin);
+
     playerRef.current = new window.YT!.Player("yt-player", {
       height: "0",
       width: "0",
-      playerVars: { autoplay: 1, controls: 0, disablekb: 1, playsinline: 1 },
+      playerVars: {
+        autoplay: 1,
+        controls: 0,
+        disablekb: 1,
+        playsinline: 1,
+        origin, // 👈 ESSENCIAL para domínios HTTPS
+      },
       events: {
         onReady: (e: any) => {
           e.target.setVolume(100);
           console.log("[YouTube] Player pronto");
+        },
+        onError: (e: any) => {
+          console.error("[YouTube] Erro no player:", e.data);
+        },
+        onStateChange: (event: any) => {
+          if (event.data === 0) {
+            console.log("[YouTube] vídeo terminou, reiniciando...");
+            event.target.playVideo();
+          }
         },
       },
     });
