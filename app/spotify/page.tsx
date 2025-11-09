@@ -33,6 +33,7 @@ export default function SpotifyPage() {
   const [ytReady, setYtReady] = useState(false);
   const [soundActivated, setSoundActivated] = useState(false);
   const [lastTrackId, setLastTrackId] = useState<string | null>(null);
+  const [overlayGone, setOverlayGone] = useState(false);
 
   const timerRef = useRef<number | null>(null);
   const syncRef = useRef<number | null>(null);
@@ -86,6 +87,21 @@ export default function SpotifyPage() {
     };
   }, []);
 
+  // 🧩 Função que busca e toca o vídeo
+  async function playTrack(j: NowPlaying) {
+    if (!ytReady || !window.player || !j.track?.name) return;
+    const query = `${j.artists?.[0] || ""} ${j.track.name}`;
+    const s = await fetch(`/api/youtube/search?q=${encodeURIComponent(query)}`);
+    const { videoId } = await s.json();
+    if (!videoId) return;
+    window.player.loadVideoById(videoId);
+    setTimeout(() => {
+      window.player.seekTo((j.progressMs ?? 0) / 1000, true);
+      if (j.isPlaying) window.player.playVideo();
+    }, 800);
+    setLastTrackId(j.track?.id ?? null);
+  }
+
   // 🎧 Atualiza status do Spotify
   useEffect(() => {
     if (!soundActivated) return;
@@ -104,19 +120,16 @@ export default function SpotifyPage() {
 
         if (ytReady && window.player) {
           if (j.isPlaying && j.track?.id) {
+            // nova música
             if (j.track.id !== lastTrackId) {
-              const query = `${j.artists?.[0] || ""} ${j.track.name}`;
-              const s = await fetch(`/api/youtube/search?q=${encodeURIComponent(query)}`);
-              const { videoId } = await s.json();
-              if (videoId) window.player.loadVideoById(videoId);
-              setLastTrackId(j.track.id);
+              await playTrack(j);
+            } else {
+              // sincroniza tempo
+              const ytT = window.player.getCurrentTime?.() ?? 0;
+              const spT = (j.progressMs ?? 0) / 1000;
+              if (Math.abs(spT - ytT) > 1.5) window.player.seekTo(spT, true);
+              window.player.playVideo();
             }
-
-            const ytT = window.player.getCurrentTime?.() ?? 0;
-            const spT = (j.progressMs ?? 0) / 1000;
-            if (Math.abs(spT - ytT) > 1.5) window.player.seekTo(spT, true);
-
-            window.player.playVideo();
           } else {
             window.player.pauseVideo();
           }
@@ -131,7 +144,7 @@ export default function SpotifyPage() {
     return () => window.clearInterval(id);
   }, [ytReady, soundActivated, lastTrackId]);
 
-  // 🔁 Reajuste periódico
+  // 🔁 Reajuste periódico (corrige drift)
   useEffect(() => {
     if (syncRef.current !== null) window.clearInterval(syncRef.current);
     if (!soundActivated) return;
@@ -141,7 +154,6 @@ export default function SpotifyPage() {
       const spT = (now.progressMs ?? 0) / 1000;
       if (Math.abs(spT - ytT) > 2) window.player.seekTo(spT, true);
     }, 5000);
-
     return () => {
       if (syncRef.current !== null) window.clearInterval(syncRef.current);
     };
@@ -193,11 +205,25 @@ export default function SpotifyPage() {
 
   const isPlaying = now?.isPlaying && now?.track?.name;
 
+  // 🔊 Ativa som manualmente
+  const handleActivateSound = async () => {
+    if (!ytReady || !window.player) return;
+    try {
+      window.player.playVideo();
+      window.player.pauseVideo();
+      setSoundActivated(true);
+      // efeito de saída suave da tela inicial
+      setTimeout(() => setOverlayGone(true), 900);
+    } catch (e) {
+      console.warn("Erro ao ativar som:", e);
+    }
+  };
+
   return (
     <main className="relative min-h-screen flex flex-col items-center justify-center overflow-hidden select-none">
       {/* Fundo */}
       <div
-        className="absolute inset-0 -z-10 animated-bg transition-all duration-[3000ms]"
+        className="absolute inset-0 -z-10 animated-bg"
         style={{
           background: `linear-gradient(120deg, ${colors[0]}, ${colors[1]})`,
           transition: "background 3s ease-in-out",
@@ -207,15 +233,22 @@ export default function SpotifyPage() {
       {/* Player YouTube invisível */}
       <div id="ytplayer" />
 
-      {/* 🕹️ Tela de ativação de som */}
-      {!soundActivated && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center backdrop-blur-2xl bg-black/50 text-white">
-          <button
-            onClick={() => setSoundActivated(true)}
-            className="text-2xl font-semibold bg-white/10 px-8 py-4 rounded-2xl backdrop-blur-md hover:bg-white/20 transition-all shadow-lg"
-          >
-            clique para ativar o som
-          </button>
+      {/* 🕹️ Tela inicial para ativar som */}
+      {!overlayGone && (
+        <div
+          className={`absolute inset-0 z-50 flex items-center justify-center transition-all duration-700 ${
+            soundActivated ? "opacity-0 backdrop-blur-none" : "opacity-100 backdrop-blur-3xl"
+          } bg-black/60`}
+          style={{ pointerEvents: soundActivated ? "none" : "auto" }}
+        >
+          {!soundActivated && (
+            <button
+              onClick={handleActivateSound}
+              className="text-3xl font-semibold text-white px-10 py-5 rounded-2xl bg-white/10 backdrop-blur-md hover:bg-white/20 transition-all shadow-xl"
+            >
+              clique para ativar o som
+            </button>
+          )}
         </div>
       )}
 
@@ -226,7 +259,8 @@ export default function SpotifyPage() {
         }`}
         style={{
           color: textColor,
-          filter: !soundActivated ? "blur(12px)" : "none",
+          filter: !soundActivated ? "blur(20px)" : "none",
+          transition: "filter 1s ease",
         }}
       >
         {isPlaying ? (
@@ -276,7 +310,7 @@ export default function SpotifyPage() {
       <style jsx global>{`
         .animated-bg {
           background-size: 200% 200%;
-          filter: blur(60px);
+          filter: blur(80px);
           animation: gradientShift 40s ease-in-out infinite alternate,
             pulseGlow 10s ease-in-out infinite;
         }
