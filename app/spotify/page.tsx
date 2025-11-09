@@ -31,6 +31,22 @@ export default function SpotifyPage() {
   const lyricsTimerRef = useRef<NodeJS.Timeout | null>(null);
   const lastRealignRef = useRef<number>(0);
 
+  // volume persistente
+  const [volume, setVolume] = useState<number>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("volume");
+      return saved ? parseInt(saved) : 40;
+    }
+    return 40;
+  });
+
+  useEffect(() => {
+    if (playerRef.current && typeof playerRef.current.setVolume === "function") {
+      playerRef.current.setVolume(volume);
+    }
+    localStorage.setItem("volume", String(volume));
+  }, [volume]);
+
   // ---------- extrai cores ----------
   async function extractDominantColors(url: string): Promise<{ colors: [string, string]; textColor: string }> {
     return new Promise((resolve) => {
@@ -76,8 +92,12 @@ export default function SpotifyPage() {
           if (j.album?.image)
             extractDominantColors(j.album.image).then(({colors,textColor}) => { setColors(colors); setTextColor(textColor); });
 
-          const query = `${j.track?.name} ${j.artists?.[0] || ""}`;
-          const r = await fetch(`/api/youtube/search?q=${encodeURIComponent(query)}`);
+          const params = new URLSearchParams({
+            q: j.track?.name || "",
+            artist: j.artists?.[0] || "",
+          });
+          if (j.durationMs) params.set("durationMs", String(j.durationMs));
+          const r = await fetch(`/api/youtube/search?${params.toString()}`);
           const data = await r.json();
           console.log("[YOUTUBE] videoId:", data.videoId);
           setVideoId(data.videoId || null);
@@ -138,7 +158,6 @@ export default function SpotifyPage() {
     if (!player || typeof player.getCurrentTime !== "function") return;
 
     const nowTs = Date.now();
-    // cooldown de 5s entre realinhamentos
     if (!force && nowTs - lastRealignRef.current < 5000) return;
 
     const target = (now?.progressMs || 0) / 1000;
@@ -176,9 +195,9 @@ export default function SpotifyPage() {
             playsinline: 1,
           },
           events: {
-            onReady: (ev: any) => { 
+            onReady: (ev: any) => {
               console.log("[YOUTUBE] player ready");
-              ev.target.setVolume(100);
+              ev.target.setVolume(volume);
               ytReadyResolveRef.current?.();
             },
           },
@@ -188,7 +207,6 @@ export default function SpotifyPage() {
 
     await ytReadyPromiseRef.current;
 
-    // primeira carga
     if (videoId && playerRef.current?.loadVideoById) {
       playerRef.current.loadVideoById(videoId);
       await new Promise((r) => setTimeout(r, 800));
@@ -199,14 +217,12 @@ export default function SpotifyPage() {
   // ---------- Sincroniza quando há eventos ----------
   useEffect(() => {
     if (!unlocked || !playerRef.current || !videoId) return;
-    console.log("[YOUTUBE] nova faixa -> load e realinha");
     playerRef.current.loadVideoById(videoId);
     setTimeout(() => realignPlayer(true), 1000);
   }, [videoId]);
 
   useEffect(() => {
     if (!unlocked || !playerRef.current) return;
-    console.log("[SYNC] Estado mudou:", now?.isPlaying ? "▶️ play" : "⏸ pause");
     realignPlayer(true);
   }, [now?.isPlaying]);
 
@@ -215,7 +231,6 @@ export default function SpotifyPage() {
     realignPlayer();
   }, [now?.progressMs]);
 
-  // limpeza
   useEffect(() => {
     return () => {
       if (lyricsTimerRef.current) clearInterval(lyricsTimerRef.current);
@@ -278,6 +293,23 @@ export default function SpotifyPage() {
 
       <div className="absolute bottom-8 flex flex-col items-center transition-all duration-700">
         <DiscordCard />
+
+        {unlocked && (
+          <div className="mt-4 flex items-center gap-2 opacity-80 hover:opacity-100 transition-all">
+            <span className="text-xs select-none" style={{ color: textColor }}>🔉</span>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={volume}
+              onChange={(e) => setVolume(parseInt(e.target.value))}
+              className="w-32 h-1 rounded-full appearance-none bg-white/30 cursor-pointer accent-white"
+              style={{
+                accentColor: textColor === "white" ? "#fff" : "#000",
+              }}
+            />
+          </div>
+        )}
       </div>
 
       <style jsx global>{`
