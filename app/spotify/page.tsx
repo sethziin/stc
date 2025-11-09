@@ -31,11 +31,11 @@ export default function SpotifyPage() {
   const [textColor, setTextColor] = useState("white");
   const [transitioning, setTransitioning] = useState(false);
   const [ytReady, setYtReady] = useState(false);
+  const [soundActivated, setSoundActivated] = useState(false);
   const [lastTrackId, setLastTrackId] = useState<string | null>(null);
 
   const timerRef = useRef<number | null>(null);
   const syncRef = useRef<number | null>(null);
-  const lastProgressRef = useRef(0);
 
   // 🎨 Extrai cores da capa
   async function extractDominantColors(url: string) {
@@ -88,51 +88,40 @@ export default function SpotifyPage() {
 
   // 🎧 Atualiza status do Spotify
   useEffect(() => {
+    if (!soundActivated) return;
+
     async function fetchNow() {
       try {
         const r = await fetch("/api/spotify/now-playing", { cache: "no-store" });
         const j: NowPlaying = await r.json();
         setNow(j);
 
-        // Atualiza cores
         if (j.album?.image)
           extractDominantColors(j.album.image).then((res) => {
             setColors(res.colors);
             setTextColor(res.textColor);
           });
 
-        // Controle YouTube
         if (ytReady && window.player) {
           if (j.isPlaying && j.track?.id) {
-            // Se mudou de faixa → carrega novo vídeo
             if (j.track.id !== lastTrackId) {
               const query = `${j.artists?.[0] || ""} ${j.track.name}`;
               const s = await fetch(`/api/youtube/search?q=${encodeURIComponent(query)}`);
               const { videoId } = await s.json();
-              if (videoId) {
-                window.player.loadVideoById(videoId);
-              }
+              if (videoId) window.player.loadVideoById(videoId);
               setLastTrackId(j.track.id);
             }
 
-            // Sincroniza tempo
             const ytT = window.player.getCurrentTime?.() ?? 0;
             const spT = (j.progressMs ?? 0) / 1000;
-            if (Math.abs(spT - ytT) > 1.5) {
-              window.player.seekTo(spT, true);
-            }
+            if (Math.abs(spT - ytT) > 1.5) window.player.seekTo(spT, true);
 
-            // Play
             window.player.playVideo();
           } else {
-            // Pause
             window.player.pauseVideo();
           }
         }
-
-        lastProgressRef.current = j.progressMs ?? 0;
-      } catch (err) {
-        console.warn("Erro Spotify:", err);
+      } catch {
         setNow({ isPlaying: false });
       }
     }
@@ -140,11 +129,12 @@ export default function SpotifyPage() {
     fetchNow();
     const id = window.setInterval(fetchNow, 2000);
     return () => window.clearInterval(id);
-  }, [ytReady, lastTrackId]);
+  }, [ytReady, soundActivated, lastTrackId]);
 
-  // 🔁 Reajuste periódico (corrige drift)
+  // 🔁 Reajuste periódico
   useEffect(() => {
     if (syncRef.current !== null) window.clearInterval(syncRef.current);
+    if (!soundActivated) return;
     syncRef.current = window.setInterval(() => {
       if (!now?.isPlaying || !window.player) return;
       const ytT = window.player.getCurrentTime?.() ?? 0;
@@ -155,7 +145,7 @@ export default function SpotifyPage() {
     return () => {
       if (syncRef.current !== null) window.clearInterval(syncRef.current);
     };
-  }, [now?.isPlaying]);
+  }, [now?.isPlaying, soundActivated]);
 
   // 🧾 Letras
   useEffect(() => {
@@ -217,12 +207,27 @@ export default function SpotifyPage() {
       {/* Player YouTube invisível */}
       <div id="ytplayer" />
 
+      {/* 🕹️ Tela de ativação de som */}
+      {!soundActivated && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center backdrop-blur-2xl bg-black/50 text-white">
+          <button
+            onClick={() => setSoundActivated(true)}
+            className="text-2xl font-semibold bg-white/10 px-8 py-4 rounded-2xl backdrop-blur-md hover:bg-white/20 transition-all shadow-lg"
+          >
+            clique para ativar o som
+          </button>
+        </div>
+      )}
+
       {/* Conteúdo */}
       <div
         className={`w-full max-w-3xl text-center px-4 transition-all duration-700 ${
           transitioning ? "opacity-0 translate-y-2" : "opacity-100 translate-y-0"
         }`}
-        style={{ color: textColor }}
+        style={{
+          color: textColor,
+          filter: !soundActivated ? "blur(12px)" : "none",
+        }}
       >
         {isPlaying ? (
           <>
